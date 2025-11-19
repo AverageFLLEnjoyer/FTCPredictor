@@ -182,6 +182,7 @@
                 <button onclick="getPredictions()" id="predict-btn">Get Predictions</button>
             </div>
             <div id="predictions-results"></div>
+            <div id="past-matches-results"></div> <!-- Moved this here -->
         </div>
 
         <!-- Team Tab -->
@@ -207,6 +208,7 @@
             const eventCode = document.getElementById('event-code').value.trim().toUpperCase();
             const btn = document.getElementById('predict-btn');
             const results = document.getElementById('predictions-results');
+            const pastResults = document.getElementById('past-matches-results');
             
             if (!eventCode) {
                 results.innerHTML = '<div class="error">Please enter an event code</div>';
@@ -216,6 +218,7 @@
             btn.disabled = true;
             btn.textContent = 'Loading...';
             results.innerHTML = '<div class="loading">📡 Fetching match data from FTC Scout...</div>';
+            pastResults.innerHTML = '';
             
             try {
                 const response = await fetch(`/api/event/${eventCode}/predictions`);
@@ -256,8 +259,14 @@
                 html += `<p>No OPR data available</p>`;
             }
             
+            // Show match summary
+            html += `<div style="background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                <strong>Event Summary:</strong> ${data.played_matches || 0} matches played • 
+                ${data.scheduled_matches || 0} matches scheduled • ${data.total_matches || 0} total matches
+            </div>`;
+            
             if (data.predictions && data.predictions.length > 0) {
-                html += `<h3>🎯 Match Predictions (${data.predictions.length} matches)</h3>`;
+                html += `<h3>🎯 Upcoming Match Predictions (${data.predictions.length} matches)</h3>`;
                 data.predictions.forEach(pred => {
                     const winnerColor = pred.predicted_winner === 'red' ? '#e74c3c' : '#3498db';
                     
@@ -299,33 +308,98 @@
             }
             
             results.innerHTML = html;
+            
+            // Also display past matches
+            displayPastMatches(data);
+        }
+
+        function displayPastMatches(data) {
+            const results = document.getElementById('past-matches-results');
+            
+            if (data.past_matches && data.past_matches.length > 0) {
+                let html = `<h3>📈 Past Match Results (${data.past_matches.length} matches)</h3>`;
+                
+                if (data.prediction_accuracy > 0) {
+                    html += `<div class="prediction" style="background: #e8f5e8; border-left: 4px solid #27ae60;">
+                        <strong>Prediction Accuracy: ${data.prediction_accuracy}%</strong><br>
+                        Correct: ${data.past_matches.filter(m => m.correct_prediction).length} / 
+                        ${data.past_matches.filter(m => m.actual_winner !== 'tie').length} predictable matches
+                    </div>`;
+                }
+                
+                data.past_matches.forEach(match => {
+                    const actualWinnerColor = match.actual_winner === 'red' ? '#e74c3c' : 
+                                           match.actual_winner === 'blue' ? '#3498db' : '#f39c12';
+                    const predictionCorrect = match.correct_prediction;
+                    const predictionColor = predictionCorrect ? '#27ae60' : '#e74c3c';
+                    
+                    html += `
+                        <div class="prediction" style="border-left: 4px solid ${actualWinnerColor};">
+                            <div class="match-header">
+                                <strong>Match ${match.match_number} - PLAYED</strong>
+                                <div style="color: ${predictionColor}; font-weight: bold;">
+                                    ${predictionCorrect ? '✅ Prediction Correct' : '❌ Prediction Incorrect'}
+                                </div>
+                            </div>
+                            <div class="rp-predictions">
+                                <div class="alliance-rp">
+                                    <strong>🔴 Red Alliance</strong><br>
+                                    Teams: ${match.red_teams.join(', ')}<br>
+                                    Total OPR: ${match.red_opr_sum.toFixed(1)}<br>
+                                    <strong>Actual Score: ${match.red_score}</strong>
+                                </div>
+                                <div class="alliance-rp">
+                                    <strong>🔵 Blue Alliance</strong><br>
+                                    Teams: ${match.blue_teams.join(', ')}<br>
+                                    Total OPR: ${match.blue_opr_sum.toFixed(1)}<br>
+                                    <strong>Actual Score: ${match.blue_score}</strong>
+                                </div>
+                            </div>
+                            <div style="text-align: center; margin-top: 10px;">
+                                <strong style="color: ${actualWinnerColor}; font-size: 18px;">
+                                    🏆 Actual Winner: ${match.actual_winner.toUpperCase()}
+                                </strong>
+                                <div style="color: #7f8c8d; margin-top: 5px;">
+                                    Predicted: ${match.predicted_winner.toUpperCase()} • 
+                                    OPR Difference: ${Math.abs(match.red_opr_sum - match.blue_opr_sum).toFixed(1)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                results.innerHTML = html;
+            } else {
+                results.innerHTML = `<p>No past matches found</p>`;
+            }
         }
 
         function displayRPPredictions(rpData) {
-    // ALWAYS display RP data, no more protection checks
-    return `
-        <div style="margin-top: 8px;">
-            <div class="rp-item">
-                <span>🚚 Movement RP:</span>
-                <span class="${rpData.movement_rp ? 'rp-yes' : 'rp-no'}">
-                    ${rpData.movement_rp ? '✅' : '❌'} ${rpData.movement_avg || 0}%
-                </span>
-            </div>
-            <div class="rp-item">
-                <span>🎯 Goal RP:</span>
-                <span class="${rpData.goal_rp ? 'rp-yes' : 'rp-no'}">
-                    ${rpData.goal_rp ? '✅' : '❌'} ${rpData.goal_avg || 0}%
-                </span>
-            </div>
-            <div class="rp-item">
-                <span>📊 Pattern RP:</span>
-                <span class="${rpData.pattern_rp ? 'rp-yes' : 'rp-no'}">
-                    ${rpData.pattern_rp ? '✅' : '❌'} ${rpData.pattern_avg || 0}%
-                </span>
-            </div>
-        </div>
-    `;
-}
+            // ALWAYS display RP data, no more protection checks
+            return `
+                <div style="margin-top: 8px;">
+                    <div class="rp-item">
+                        <span>🚚 Movement RP:</span>
+                        <span class="${rpData.movement_rp ? 'rp-yes' : 'rp-no'}">
+                            ${rpData.movement_rp ? '✅' : '❌'} ${rpData.movement_avg || 0}%
+                        </span>
+                    </div>
+                    <div class="rp-item">
+                        <span>🎯 Goal RP:</span>
+                        <span class="${rpData.goal_rp ? 'rp-yes' : 'rp-no'}">
+                            ${rpData.goal_rp ? '✅' : '❌'} ${rpData.goal_avg || 0}%
+                        </span>
+                    </div>
+                    <div class="rp-item">
+                        <span>📊 Pattern RP:</span>
+                        <span class="${rpData.pattern_rp ? 'rp-yes' : 'rp-no'}">
+                            ${rpData.pattern_rp ? '✅' : '❌'} ${rpData.pattern_avg || 0}%
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+
         async function getTeamData() {
             const teamNumber = document.getElementById('team-number').value.trim();
             const btn = document.getElementById('team-btn');
