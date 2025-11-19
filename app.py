@@ -39,7 +39,6 @@ class FTCStatsCalculator:
                 if event.get('eventCode') == event_code:
                     return event.get('stats', {})
         elif team_events and isinstance(team_events, dict):
-            # Handle case where it returns a single event object
             if team_events.get('eventCode') == event_code:
                 return team_events.get('stats', {})
         
@@ -65,10 +64,8 @@ class FTCStatsCalculator:
                 opr_components = stats['opr']
                 total_opr = opr_components.get('totalPointsNp', 0)
                 opr_data[team] = total_opr
-                print(f"Team {team} OPR: {total_opr}")
             else:
                 opr_data[team] = 0
-                print(f"Team {team} no OPR data")
         
         return opr_data
 
@@ -91,8 +88,6 @@ class FTCStatsCalculator:
             
             if stats and 'avg' in stats:
                 avg_stats = stats['avg']
-                
-                # Get the RP averages from the avg stats - no protection, just get the values
                 movement_avg = avg_stats.get('movementRp', 0) * 100
                 goal_avg = avg_stats.get('goalRp', 0) * 100
                 pattern_avg = avg_stats.get('patternRp', 0) * 100
@@ -106,7 +101,6 @@ class FTCStatsCalculator:
                     'pattern_avg': round(pattern_avg)
                 }
             else:
-                # No stats available - just return zeros
                 rp_data[team] = {
                     'movement_rp': False,
                     'movement_avg': 0,
@@ -135,7 +129,7 @@ def serve_static(path):
 # API Routes
 @app.route('/api/event/<event_code>/predictions')
 def get_event_predictions(event_code: str):
-    """Get match predictions for an event"""
+    """Get match predictions AND past match results for an event"""
     try:
         matches = calculator.get_event_matches(event_code)
         if not matches:
@@ -145,41 +139,62 @@ def get_event_predictions(event_code: str):
         
         # Get OPR data
         opr_data = calculator.calculate_opr(event_code)
-        print(f"OPR data: {opr_data}")
         
         # Get RP data
         rp_data = calculator.calculate_rp_simple(event_code)
         
         predictions = []
+        past_matches = []
         scheduled_matches = 0
+        played_matches = 0
         
         for match in matches:
-            if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
-                scheduled_matches += 1
-                red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
-                blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
+            red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
+            blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
+            
+            # Check if match has been played (has scores)
+            if match.get('scores') and match['scores'].get('red') and match['scores'].get('blue'):
+                played_matches += 1
+                red_score = match['scores']['red'].get('totalPoints', 0)
+                blue_score = match['scores']['blue'].get('totalPoints', 0)
+                actual_winner = 'red' if red_score > blue_score else 'blue' if blue_score > red_score else 'tie'
                 
-                # Calculate OPR sums
+                # Calculate what the prediction would have been
+                red_opr = sum(opr_data.get(team, 0) for team in red_teams)
+                blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
+                predicted_winner = 'red' if red_opr > blue_opr else 'blue'
+                
+                past_matches.append({
+                    'match_number': match.get('id'),
+                    'red_teams': red_teams,
+                    'blue_teams': blue_teams,
+                    'red_score': red_score,
+                    'blue_score': blue_score,
+                    'actual_winner': actual_winner,
+                    'predicted_winner': predicted_winner,
+                    'red_opr_sum': round(red_opr, 1),
+                    'blue_opr_sum': round(blue_opr, 1),
+                    'correct_prediction': actual_winner != 'tie' and actual_winner == predicted_winner
+                })
+            else:
+                # This is an upcoming match - make prediction
+                scheduled_matches += 1
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
                 
-                # Calculate confidence
                 total_opr = red_opr + blue_opr
                 if total_opr > 0:
                     confidence = (abs(red_opr - blue_opr) / total_opr) * 100
                 else:
                     confidence = 0
                 
-                # Simple RP prediction for alliance
                 def predict_alliance_rps(teams):
                     if len(teams) != 2:
                         return {'movement_rp': False, 'goal_rp': False, 'pattern_rp': False}
                     
-                    # Get RP data for both teams
                     team1_rp = rp_data.get(teams[0], {})
                     team2_rp = rp_data.get(teams[1], {})
                     
-                    # Average the RP values and check if > 0.5
                     movement_avg = (team1_rp.get('movement_avg', 0) + team2_rp.get('movement_avg', 0)) / 2
                     goal_avg = (team1_rp.get('goal_avg', 0) + team2_rp.get('goal_avg', 0)) / 2
                     pattern_avg = (team1_rp.get('pattern_avg', 0) + team2_rp.get('pattern_avg', 0)) / 2
@@ -212,12 +227,20 @@ def get_event_predictions(event_code: str):
                     'blue_rp_predictions': blue_rps
                 })
         
+        # Calculate prediction accuracy for past matches
+        correct_predictions = sum(1 for match in past_matches if match['correct_prediction'])
+        total_predictable = sum(1 for match in past_matches if match['actual_winner'] != 'tie')
+        accuracy = (correct_predictions / total_predictable * 100) if total_predictable > 0 else 0
+        
         return jsonify({
             "event_code": event_code,
             "opr_data": opr_data,
             "predictions": predictions,
+            "past_matches": past_matches,
             "scheduled_matches": scheduled_matches,
-            "total_matches": len(matches)
+            "played_matches": played_matches,
+            "total_matches": len(matches),
+            "prediction_accuracy": round(accuracy, 1)
         })
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
