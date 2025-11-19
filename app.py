@@ -30,6 +30,10 @@ class FTCStatsCalculator:
         """Fetch matches for an event"""
         return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/matches") or []
 
+    def get_event_teams(self, event_code: str):
+        """Get all teams participating in the event"""
+        return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/teams") or []
+
     def get_team_event_stats(self, team_number: str, event_code: str):
         """Get team stats for a specific event"""
         team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
@@ -41,32 +45,25 @@ class FTCStatsCalculator:
 
     def calculate_opr(self, event_code: str):
         """Get OPR data for all teams in the event"""
-        # First, get all teams in the event
-        matches = self.get_event_matches(event_code)
-        if not matches:
+        # Get all teams in the event
+        event_teams = self.get_event_teams(event_code)
+        if not event_teams:
             return {}
-        
-        # Get unique teams
-        teams = set()
-        for match in matches:
-            for team_data in match.get('teams', []):
-                team_num = str(team_data.get('teamNumber'))
-                if team_num:
-                    teams.add(team_num)
         
         # Get OPR for each team
         opr_data = {}
-        for team in teams:
-            stats = self.get_team_event_stats(team, event_code)
+        for team_data in event_teams:
+            team_number = str(team_data.get('teamNumber'))
+            stats = team_data.get('stats', {})
             if stats and 'opr' in stats:
-                # Get the totalPointsNp OPR value (82.72 for team 14380)
+                # Get the totalPointsNp OPR value
                 opr_components = stats['opr']
                 total_opr = opr_components.get('totalPointsNp', 0)
-                opr_data[team] = total_opr
-                print(f"Team {team} OPR: {total_opr}")
+                opr_data[team_number] = total_opr
+                print(f"Team {team_number} OPR: {total_opr}")
             else:
-                opr_data[team] = 0
-                print(f"Team {team} no OPR data")
+                opr_data[team_number] = 0
+                print(f"Team {team_number} no OPR data")
         
         return opr_data
 
@@ -108,6 +105,11 @@ def get_event_predictions(event_code: str):
                 scheduled_matches += 1
                 red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'red']
                 blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'blue']
+                
+                # Skip matches that don't have teams assigned yet
+                if not red_teams or not blue_teams:
+                    print(f"Match {match.get('id')} has no teams assigned yet")
+                    continue
                 
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
