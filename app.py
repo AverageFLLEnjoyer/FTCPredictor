@@ -95,22 +95,22 @@ class FTCStatsCalculator:
                 avg_stats = stats['avg']
                 print(f"Team {team} avg stats: {avg_stats}")
                 
-                # Get the actual RP averages from the stats
-                movement_avg = avg_stats.get('movementRp', 0)
-                goal_avg = avg_stats.get('goalRp', 0) 
-                pattern_avg = avg_stats.get('patternRp', 0)
+                # Get the RP averages from the avg stats - CORRECTED FIELD NAMES
+                movement_avg = avg_stats.get('movement_rp', 0) * 100  # Convert to percentage
+                goal_avg = avg_stats.get('goal_rp', 0) * 100
+                pattern_avg = avg_stats.get('pattern_rp', 0) * 100
                 
-                print(f"Team {team} RP values - movement: {movement_avg}, goal: {goal_avg}, pattern: {pattern_avg}")
+                print(f"Team {team} RP values - movement: {movement_avg}%, goal: {goal_avg}%, pattern: {pattern_avg}%")
                 
                 rp_data[team] = {
-                    'movement_rp': movement_avg > 0.5,
-                    'movement_avg': movement_avg,
-                    'goal_rp': goal_avg > 0.5,
-                    'goal_avg': goal_avg,
-                    'pattern_rp': pattern_avg > 0.5,
-                    'pattern_avg': pattern_avg
+                    'movement_rp': movement_avg > 50,  # Check if > 50% chance
+                    'movement_avg': round(movement_avg),
+                    'goal_rp': goal_avg > 50,
+                    'goal_avg': round(goal_avg),
+                    'pattern_rp': pattern_avg > 50,
+                    'pattern_avg': round(pattern_avg)
                 }
-                print(f"Team {team} RP prediction: movement={movement_avg > 0.5}, goal={goal_avg > 0.5}, pattern={pattern_avg > 0.5}")
+                print(f"Team {team} RP prediction: movement={movement_avg > 50}, goal={goal_avg > 50}, pattern={pattern_avg > 50}")
             else:
                 # No stats available
                 print(f"Team {team} - no stats or no avg field")
