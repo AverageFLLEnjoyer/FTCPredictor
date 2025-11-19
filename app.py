@@ -1,10 +1,9 @@
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import requests
-import numpy as np
 import os
 
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__)
 CORS(app)
 
 # FTC Scout API configuration
@@ -32,7 +31,7 @@ class FTCStatsCalculator:
         return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/matches") or []
     
     def calculate_opr(self, matches):
-        """Calculate OPR from match data"""
+        """Calculate OPR from match data (simplified without numpy)"""
         if not matches:
             return {}
         
@@ -47,12 +46,9 @@ class FTCStatsCalculator:
         teams = list(teams)
         if not teams:
             return {}
-            
-        team_to_index = {team: idx for idx, team in enumerate(teams)}
         
-        # Build matrices for OPR calculation
-        A = []  # Alliance matrix
-        b = []  # Score vector
+        # Simple average-based calculation instead of matrix solving
+        team_scores = {team: [] for team in teams}
         
         for match in matches:
             if 'scores' not in match:
@@ -74,30 +70,31 @@ class FTCStatsCalculator:
                     alliance_score = alliance_scores['totalPoints']
                 
                 if alliance_teams and alliance_score is not None:
-                    row = [0] * len(teams)
+                    # Distribute score equally among teams (simplified OPR)
+                    score_per_team = alliance_score / len(alliance_teams)
                     for team in alliance_teams:
-                        if team in team_to_index:
-                            row[team_to_index[team]] = 1
-                    A.append(row)
-                    b.append(alliance_score)
+                        if team in team_scores:
+                            team_scores[team].append(score_per_team)
         
-        if len(A) < len(teams):
-            return {}
+        # Calculate average as simplified OPR
+        opr_data = {}
+        for team, scores in team_scores.items():
+            if scores:
+                opr_data[team] = sum(scores) / len(scores)
+            else:
+                opr_data[team] = 0
         
-        try:
-            A_array = np.array(A)
-            b_array = np.array(b)
-            opr_values = np.linalg.lstsq(A_array, b_array, rcond=None)[0]
-            return {team: float(opr_values[idx]) for idx, team in enumerate(teams)}
-        except:
-            return {}
+        return opr_data
 
 calculator = FTCStatsCalculator()
 
-# Serve frontend
+# Serve frontend - FIXED for Vercel
 @app.route('/')
 def serve_frontend():
-    return send_from_directory('static', 'index.html')
+    try:
+        return send_from_directory('static', 'index.html')
+    except Exception as e:
+        return f"Error loading frontend: {str(e)}", 500
 
 @app.route('/<path:path>')
 def serve_static(path):
@@ -107,57 +104,63 @@ def serve_static(path):
 @app.route('/api/event/<event_code>/predictions')
 def get_event_predictions(event_code: str):
     """Get match predictions for an event"""
-    matches = calculator.get_event_matches(event_code)
-    if not matches:
-        return jsonify({"error": f"No matches found for event {event_code}"}), 404
-    
-    opr_data = calculator.calculate_opr(matches)
-    
-    predictions = []
-    for match in matches:
-        # Only predict matches without scores
-        if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
-            red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'red']
-            blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'blue']
-            
-            red_opr = sum(opr_data.get(team, 0) for team in red_teams)
-            blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
-            
-            predictions.append({
-                'match_number': match.get('id'),
-                'red_teams': red_teams,
-                'blue_teams': blue_teams,
-                'red_opr_sum': red_opr,
-                'blue_opr_sum': blue_opr,
-                'predicted_winner': 'red' if red_opr > blue_opr else 'blue'
-            })
-    
-    return jsonify({
-        "event_code": event_code,
-        "opr_data": opr_data,
-        "predictions": predictions
-    })
+    try:
+        matches = calculator.get_event_matches(event_code)
+        if not matches:
+            return jsonify({"error": f"No matches found for event {event_code}"}), 404
+        
+        opr_data = calculator.calculate_opr(matches)
+        
+        predictions = []
+        for match in matches:
+            # Only predict matches without scores
+            if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
+                red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'red']
+                blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'blue']
+                
+                red_opr = sum(opr_data.get(team, 0) for team in red_teams)
+                blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
+                
+                predictions.append({
+                    'match_number': match.get('id'),
+                    'red_teams': red_teams,
+                    'blue_teams': blue_teams,
+                    'red_opr_sum': red_opr,
+                    'blue_opr_sum': blue_opr,
+                    'predicted_winner': 'red' if red_opr > blue_opr else 'blue'
+                })
+        
+        return jsonify({
+            "event_code": event_code,
+            "opr_data": opr_data,
+            "predictions": predictions
+        })
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/team/<team_number>')
 def get_team_stats(team_number: str):
     """Get basic team info"""
-    team_info = calculator.make_api_call(f"teams/{team_number}")
-    if not team_info:
-        return jsonify({"error": "Team not found"}), 404
-    
-    return jsonify({
-        "team_info": team_info,
-        "message": "Team data loaded - more features coming soon!"
-    })
+    try:
+        team_info = calculator.make_api_call(f"teams/{team_number}")
+        if not team_info:
+            return jsonify({"error": "Team not found"}), 404
+        
+        return jsonify({
+            "team_info": team_info,
+            "message": "Team data loaded - more features coming soon!"
+        })
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+# Add a basic health check
+@app.route('/api/health')
+def health_check():
+    return jsonify({"status": "ok", "message": "Server is running!"})
+
+# This is needed for Vercel
+app = app
 
 if __name__ == '__main__':
-    # Create static directory if it doesn't exist
-    if not os.path.exists('static'):
-        os.makedirs('static')
-    
-    print("🚀 Starting FTC Stats Server...")
-    print("📊 Backend API: http://localhost:5000/api/")
-    print("🌐 Frontend: http://localhost:5000/")
-    print("Press Ctrl+C to stop the server")
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
