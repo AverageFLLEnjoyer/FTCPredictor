@@ -109,8 +109,32 @@ def get_event_predictions(event_code: str):
                 red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'red']
                 blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'blue']
                 
-                red_opr = sum(opr_data.get(team, 0) for team in red_teams)
-                blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
+                # DEBUG: Check what we're working with
+                print(f"🔍 MATCH {match.get('id')} DEBUG:")
+                print(f"   Red teams: {red_teams}")
+                print(f"   Blue teams: {blue_teams}")
+                
+                # DEBUG: Check each team's OPR
+                red_opr_values = []
+                for team in red_teams:
+                    opr_val = opr_data.get(team, 0)
+                    red_opr_values.append(opr_val)
+                    print(f"   Team {team} OPR: {opr_val}")
+                
+                blue_opr_values = []
+                for team in blue_teams:
+                    opr_val = opr_data.get(team, 0)
+                    blue_opr_values.append(opr_val)
+                    print(f"   Team {team} OPR: {opr_val}")
+                
+                # Sum the OPRs
+                red_opr = sum(red_opr_values)
+                blue_opr = sum(blue_opr_values)
+                
+                print(f"   Red OPR sum: {red_opr} (from values: {red_opr_values})")
+                print(f"   Blue OPR sum: {blue_opr} (from values: {blue_opr_values})")
+                print(f"   Predicted winner: {'red' if red_opr > blue_opr else 'blue'}")
+                print("---")
                 
                 predictions.append({
                     'match_number': match.get('id'),
