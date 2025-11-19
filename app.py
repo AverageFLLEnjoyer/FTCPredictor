@@ -30,35 +30,43 @@ class FTCStatsCalculator:
         """Fetch matches for an event"""
         return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/matches") or []
 
-    def get_event_teams(self, event_code: str):
-        """Get all teams participating in the event with their stats"""
-        return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/teams") or []
+    def get_team_event_stats(self, team_number: str, event_code: str):
+        """Get team stats for a specific event"""
+        team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
+        if team_events:
+            for event in team_events:
+                if event.get('eventCode') == event_code:
+                    return event.get('stats', {})
+        return {}
 
     def calculate_opr(self, event_code: str):
         """Get OPR data for all teams in the event"""
-        # Get all teams in the event with their stats
-        event_teams = self.get_event_teams(event_code)
-        if not event_teams:
-            print(f"No teams found for event {event_code}")
+        # First, get all teams in the event
+        matches = self.get_event_matches(event_code)
+        if not matches:
             return {}
+        
+        # Get unique teams
+        teams = set()
+        for match in matches:
+            for team_data in match.get('teams', []):
+                team_num = str(team_data.get('teamNumber'))
+                if team_num:
+                    teams.add(team_num)
         
         # Get OPR for each team
         opr_data = {}
-        for team_data in event_teams:
-            team_number = str(team_data.get('teamNumber'))
-            stats = team_data.get('stats', {})
-            
-            print(f"Team {team_number} stats: {stats}")
-            
+        for team in teams:
+            stats = self.get_team_event_stats(team, event_code)
             if stats and 'opr' in stats:
+                # Get the totalPointsNp OPR value (82.72 for team 14380)
                 opr_components = stats['opr']
-                # Use totalPointsNp OPR value
                 total_opr = opr_components.get('totalPointsNp', 0)
-                opr_data[team_number] = total_opr
-                print(f"Team {team_number} OPR: {total_opr}")
+                opr_data[team] = total_opr
+                print(f"Team {team} OPR: {total_opr}")
             else:
-                opr_data[team_number] = 0
-                print(f"Team {team_number} no OPR data")
+                opr_data[team] = 0
+                print(f"Team {team} no OPR data")
         
         return opr_data
 
@@ -89,7 +97,7 @@ def get_event_predictions(event_code: str):
         
         # Get OPR data
         opr_data = calculator.calculate_opr(event_code)
-        print(f"OPR data for {len(opr_data)} teams: {opr_data}")
+        print(f"OPR data: {opr_data}")
         
         predictions = []
         scheduled_matches = 0
@@ -98,35 +106,11 @@ def get_event_predictions(event_code: str):
             # Only predict matches without scores
             if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
                 scheduled_matches += 1
+                red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'red']
+                blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'blue']
                 
-                # Extract teams from match data
-                red_teams = []
-                blue_teams = []
-                
-                for team in match.get('teams', []):
-                    team_number = str(team.get('teamNumber'))
-                    alliance = team.get('alliance')
-                    if alliance == 'red':
-                        red_teams.append(team_number)
-                    elif alliance == 'blue':
-                        blue_teams.append(team_number)
-                
-                # Skip matches that don't have teams assigned yet
-                if not red_teams or not blue_teams:
-                    print(f"Match {match.get('id')} has incomplete teams")
-                    continue
-                
-                # Calculate OPR sums for alliances
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
-                
-                # Determine winner
-                if red_opr > blue_opr:
-                    predicted_winner = 'red'
-                elif blue_opr > red_opr:
-                    predicted_winner = 'blue'
-                else:
-                    predicted_winner = 'tie'
                 
                 predictions.append({
                     'match_number': match.get('id'),
@@ -134,8 +118,7 @@ def get_event_predictions(event_code: str):
                     'blue_teams': blue_teams,
                     'red_opr_sum': round(red_opr, 1),
                     'blue_opr_sum': round(blue_opr, 1),
-                    'predicted_winner': predicted_winner,
-                    'confidence': abs(red_opr - blue_opr)
+                    'predicted_winner': 'red' if red_opr > blue_opr else 'blue'
                 })
         
         return jsonify({
@@ -143,13 +126,9 @@ def get_event_predictions(event_code: str):
             "opr_data": opr_data,
             "predictions": predictions,
             "scheduled_matches": scheduled_matches,
-            "predicted_matches": len(predictions),
             "total_matches": len(matches)
         })
     except Exception as e:
-        import traceback
-        print(f"Error in predictions: {str(e)}")
-        print(traceback.format_exc())
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/team/<team_number>')
@@ -171,6 +150,9 @@ def get_team_stats(team_number: str):
 @app.route('/api/health')
 def health_check():
     return jsonify({"status": "ok", "message": "Server is running!"})
+
+# This is needed for Vercel
+app = app
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
