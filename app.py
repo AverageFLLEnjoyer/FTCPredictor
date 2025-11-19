@@ -40,69 +40,73 @@ class FTCStatsCalculator:
                     return event.get('stats', {})
         return {}
 
-    def calculate_opr_with_fallback(self, event_code: str):
-        """Get OPR data with fallback RP estimation"""
-        # First, get all teams in the event
-        matches = self.get_event_matches(event_code)
-        if not matches:
-            return {}, {}
+    def get_event_teams_data(self, event_code: str):
+        """Get all teams data for an event in one call"""
+        return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/teams") or []
+
+    def calculate_opr(self, event_code: str):
+        """Get OPR data for all teams in the event"""
+        # Use the event teams endpoint which is more reliable
+        event_teams = self.get_event_teams_data(event_code)
+        if not event_teams:
+            return {}
         
-        # Get unique teams
-        teams = set()
-        for match in matches:
-            for team_data in match.get('teams', []):
-                team_num = str(team_data.get('teamNumber'))
-                if team_num:
-                    teams.add(team_num)
-        
-        # Get OPR and RP data for each team
         opr_data = {}
-        rp_data = {}
-        
-        for team in teams:
-            stats = self.get_team_event_stats(team, event_code)
+        for team_data in event_teams:
+            team_number = str(team_data.get('teamNumber'))
+            stats = team_data.get('stats', {})
             
             if stats and 'opr' in stats:
                 opr_components = stats['opr']
                 total_opr = opr_components.get('totalPointsNp', 0)
-                opr_data[team] = total_opr
-                
-                # Try to get RP data from avg stats first
-                if 'avg' in stats:
-                    avg_stats = stats['avg']
-                    rp_data[team] = {
-                        'movement_rp_prob': min(1.0, avg_stats.get('movementRp', 0)),
-                        'goal_rp_prob': min(1.0, avg_stats.get('goalRp', 0)),
-                        'pattern_rp_prob': min(1.0, avg_stats.get('patternRp', 0)),
-                    }
-                else:
-                    # Fallback: Estimate RP probabilities based on OPR components
-                    auto_points = opr_components.get('autoPoints', 0)
-                    dc_points = opr_components.get('dcPoints', 0)
-                    pattern_points = opr_components.get('patternPoints', 0) or opr_components.get('autoPatternPoints', 0) or opr_components.get('dcPatternPoints', 0)
-                    
-                    # Estimate probabilities based on typical thresholds
-                    movement_prob = min(1.0, max(0.1, auto_points / 15.0))  # Movement RP typically needs ~15 auto points
-                    goal_prob = min(1.0, max(0.1, dc_points / 40.0))        # Goal RP typically needs ~40 DC points  
-                    pattern_prob = min(1.0, max(0.1, pattern_points / 6.0)) # Pattern RP typically needs ~6 pattern points
-                    
-                    rp_data[team] = {
-                        'movement_rp_prob': movement_prob,
-                        'goal_rp_prob': goal_prob,
-                        'pattern_rp_prob': pattern_prob,
-                    }
-                
-                print(f"Team {team} OPR: {total_opr}, RP Probs: movement={rp_data[team]['movement_rp_prob']:.2f}, goal={rp_data[team]['goal_rp_prob']:.2f}, pattern={rp_data[team]['pattern_rp_prob']:.2f}")
+                opr_data[team_number] = total_opr
+                print(f"Team {team_number} OPR: {total_opr}")
             else:
-                opr_data[team] = 0
-                rp_data[team] = {
-                    'movement_rp_prob': 0.1,  # Small base probability
-                    'goal_rp_prob': 0.1,
-                    'pattern_rp_prob': 0.1,
-                }
-                print(f"Team {team} no OPR data, using default RP probabilities")
+                opr_data[team_number] = 0
+                print(f"Team {team_number} no OPR data")
         
-        return opr_data, rp_data
+        return opr_data
+
+    def calculate_rp_data(self, event_code: str):
+        """Get RP data for all teams in the event - SEPARATE CALL"""
+        event_teams = self.get_event_teams_data(event_code)
+        if not event_teams:
+            return {}
+        
+        rp_data = {}
+        for team_data in event_teams:
+            team_number = str(team_data.get('teamNumber'))
+            stats = team_data.get('stats', {})
+            
+            if stats and 'avg' in stats:
+                avg_stats = stats['avg']
+                # Use actual RP averages from the stats
+                rp_data[team_number] = {
+                    'movement_rp_prob': min(1.0, avg_stats.get('movementRp', 0)),
+                    'goal_rp_prob': min(1.0, avg_stats.get('goalRp', 0)),
+                    'pattern_rp_prob': min(1.0, avg_stats.get('patternRp', 0)),
+                }
+                print(f"Team {team_number} RP: movement={rp_data[team_number]['movement_rp_prob']:.2f}, goal={rp_data[team_number]['goal_rp_prob']:.2f}, pattern={rp_data[team_number]['pattern_rp_prob']:.2f}")
+            else:
+                # Fallback: Use OPR components to estimate RPs
+                opr_components = stats.get('opr', {})
+                auto_points = opr_components.get('autoPoints', 0)
+                dc_points = opr_components.get('dcPoints', 0)
+                pattern_points = opr_components.get('patternPoints', 0) or opr_components.get('autoPatternPoints', 0) or 0
+                
+                # Simple estimation based on typical values
+                movement_prob = min(1.0, max(0.1, auto_points / 20.0))
+                goal_prob = min(1.0, max(0.1, dc_points / 50.0))
+                pattern_prob = min(1.0, max(0.1, pattern_points / 8.0))
+                
+                rp_data[team_number] = {
+                    'movement_rp_prob': movement_prob,
+                    'goal_rp_prob': goal_prob,
+                    'pattern_rp_prob': pattern_prob,
+                }
+                print(f"Team {team_number} estimated RP: movement={movement_prob:.2f}, goal={goal_prob:.2f}, pattern={pattern_prob:.2f}")
+        
+        return rp_data
 
 calculator = FTCStatsCalculator()
 
@@ -121,7 +125,7 @@ def serve_static(path):
 # API Routes
 @app.route('/api/event/<event_code>/predictions')
 def get_event_predictions(event_code: str):
-    """Get match predictions for an event"""
+    """Get match predictions for an event - FAST without RP data"""
     try:
         matches = calculator.get_event_matches(event_code)
         if not matches:
@@ -129,8 +133,8 @@ def get_event_predictions(event_code: str):
         
         print(f"Found {len(matches)} matches for event {event_code}")
         
-        # Get OPR and RP data
-        opr_data, rp_data = calculator.calculate_opr_with_fallback(event_code)
+        # Get OPR data only (fast)
+        opr_data = calculator.calculate_opr(event_code)
         print(f"OPR data: {opr_data}")
         
         predictions = []
@@ -154,40 +158,9 @@ def get_event_predictions(event_code: str):
                 else:
                     confidence = 0
                 
-                # Predict RPs based on team probabilities
-                def predict_rps(teams):
-                    if not teams:
-                        return {
-                            'movement_rp': False, 'movement_prob': 0,
-                            'goal_rp': False, 'goal_prob': 0,
-                            'pattern_rp': False, 'pattern_prob': 0
-                        }
-                    
-                    # Calculate alliance probabilities (average of team probabilities)
-                    movement_probs = [rp_data.get(team, {}).get('movement_rp_prob', 0) for team in teams]
-                    goal_probs = [rp_data.get(team, {}).get('goal_rp_prob', 0) for team in teams]
-                    pattern_probs = [rp_data.get(team, {}).get('pattern_rp_prob', 0) for team in teams]
-                    
-                    avg_movement_prob = sum(movement_probs) / len(movement_probs)
-                    avg_goal_prob = sum(goal_probs) / len(goal_probs)
-                    avg_pattern_prob = sum(pattern_probs) / len(pattern_probs)
-                    
-                    # Predict RP if probability > 0.5 (more likely than not)
-                    return {
-                        'movement_rp': avg_movement_prob > 0.5,
-                        'movement_prob': round(avg_movement_prob * 100, 1),
-                        'goal_rp': avg_goal_prob > 0.5,
-                        'goal_prob': round(avg_goal_prob * 100, 1),
-                        'pattern_rp': avg_pattern_prob > 0.5,
-                        'pattern_prob': round(avg_pattern_prob * 100, 1)
-                    }
-                
-                red_rps = predict_rps(red_teams)
-                blue_rps = predict_rps(blue_teams)
-                
                 # Determine winner
                 predicted_winner = 'red' if red_opr > blue_opr else 'blue'
-                winner_confidence = min(100, max(50, round(confidence + 50)))  # Scale to 50-100%
+                winner_confidence = min(100, max(50, round(confidence + 50)))
                 
                 predictions.append({
                     'match_number': match.get('id'),
@@ -198,8 +171,7 @@ def get_event_predictions(event_code: str):
                     'predicted_winner': predicted_winner,
                     'confidence_percentage': round(confidence, 1),
                     'winner_confidence': winner_confidence,
-                    'red_rp_predictions': red_rps,
-                    'blue_rp_predictions': blue_rps
+                    # RP data will be loaded separately
                 })
         
         return jsonify({
@@ -208,6 +180,19 @@ def get_event_predictions(event_code: str):
             "predictions": predictions,
             "scheduled_matches": scheduled_matches,
             "total_matches": len(matches)
+        })
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/event/<event_code>/rp-data')
+def get_event_rp_data(event_code: str):
+    """Get RP data for an event - SEPARATE ENDPOINT"""
+    try:
+        rp_data = calculator.calculate_rp_data(event_code)
+        
+        return jsonify({
+            "event_code": event_code,
+            "rp_data": rp_data
         })
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
