@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import requests
 import os
+import math
 
 app = Flask(__name__)
 CORS(app)
@@ -44,7 +45,7 @@ class FTCStatsCalculator:
         # First, get all teams in the event
         matches = self.get_event_matches(event_code)
         if not matches:
-            return {}
+            return {}, {}
         
         # Get unique teams
         teams = set()
@@ -54,21 +55,45 @@ class FTCStatsCalculator:
                 if team_num:
                     teams.add(team_num)
         
-        # Get OPR for each team
+        # Get OPR and RP data for each team
         opr_data = {}
+        rp_data = {}  # Store RP probability data
+        
         for team in teams:
             stats = self.get_team_event_stats(team, event_code)
-            if stats and 'opr' in stats:
-                # Get the totalPointsNp OPR value (82.72 for team 14380)
-                opr_components = stats['opr']
+            if stats and 'avg' in stats:
+                avg_stats = stats['avg']
+                opr_components = stats.get('opr', {})
+                
+                # Store OPR data
                 total_opr = opr_components.get('totalPointsNp', 0)
                 opr_data[team] = total_opr
-                print(f"Team {team} OPR: {total_opr}")
+                
+                # Store RP probability data from average stats
+                # These are the actual probabilities (0-1) from the team's performance
+                rp_data[team] = {
+                    'movement_rp_prob': min(1.0, avg_stats.get('movementRp', 0)),  # Cap at 1.0
+                    'goal_rp_prob': min(1.0, avg_stats.get('goalRp', 0)),
+                    'pattern_rp_prob': min(1.0, avg_stats.get('patternRp', 0)),
+                    'auto_points': avg_stats.get('autoPoints', 0),
+                    'dc_points': avg_stats.get('dcPoints', 0),
+                    'total_points': avg_stats.get('totalPointsNp', 0)
+                }
+                
+                print(f"Team {team} OPR: {total_opr}, RP Probs: movement={rp_data[team]['movement_rp_prob']:.2f}, goal={rp_data[team]['goal_rp_prob']:.2f}, pattern={rp_data[team]['pattern_rp_prob']:.2f}")
             else:
                 opr_data[team] = 0
-                print(f"Team {team} no OPR data")
+                rp_data[team] = {
+                    'movement_rp_prob': 0,
+                    'goal_rp_prob': 0,
+                    'pattern_rp_prob': 0,
+                    'auto_points': 0,
+                    'dc_points': 0,
+                    'total_points': 0
+                }
+                print(f"Team {team} no stats data")
         
-        return opr_data
+        return opr_data, rp_data
 
 calculator = FTCStatsCalculator()
 
@@ -95,8 +120,8 @@ def get_event_predictions(event_code: str):
         
         print(f"Found {len(matches)} matches for event {event_code}")
         
-        # Get OPR data
-        opr_data = calculator.calculate_opr(event_code)
+        # Get OPR and RP data
+        opr_data, rp_data = calculator.calculate_opr(event_code)
         print(f"OPR data: {opr_data}")
         
         predictions = []
@@ -106,11 +131,54 @@ def get_event_predictions(event_code: str):
             # Only predict matches without scores
             if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
                 scheduled_matches += 1
-                red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']  # Fixed case
-                blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']  # Fixed case
+                red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
+                blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
                 
+                # Calculate OPR sums
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
+                
+                # Calculate confidence percentage
+                total_opr = red_opr + blue_opr
+                if total_opr > 0:
+                    confidence = (abs(red_opr - blue_opr) / total_opr) * 100
+                else:
+                    confidence = 0
+                
+                # Predict RPs based on team probabilities
+                def predict_rps(teams):
+                    if not teams:
+                        return {
+                            'movement_rp': False, 'movement_prob': 0,
+                            'goal_rp': False, 'goal_prob': 0,
+                            'pattern_rp': False, 'pattern_prob': 0
+                        }
+                    
+                    # Calculate alliance probabilities (average of team probabilities)
+                    movement_probs = [rp_data.get(team, {}).get('movement_rp_prob', 0) for team in teams]
+                    goal_probs = [rp_data.get(team, {}).get('goal_rp_prob', 0) for team in teams]
+                    pattern_probs = [rp_data.get(team, {}).get('pattern_rp_prob', 0) for team in teams]
+                    
+                    avg_movement_prob = sum(movement_probs) / len(movement_probs)
+                    avg_goal_prob = sum(goal_probs) / len(goal_probs)
+                    avg_pattern_prob = sum(pattern_probs) / len(pattern_probs)
+                    
+                    # Predict RP if probability > 0.5 (more likely than not)
+                    return {
+                        'movement_rp': avg_movement_prob > 0.5,
+                        'movement_prob': round(avg_movement_prob * 100, 1),
+                        'goal_rp': avg_goal_prob > 0.5,
+                        'goal_prob': round(avg_goal_prob * 100, 1),
+                        'pattern_rp': avg_pattern_prob > 0.5,
+                        'pattern_prob': round(avg_pattern_prob * 100, 1)
+                    }
+                
+                red_rps = predict_rps(red_teams)
+                blue_rps = predict_rps(blue_teams)
+                
+                # Determine winner
+                predicted_winner = 'red' if red_opr > blue_opr else 'blue'
+                winner_confidence = min(100, max(50, round(confidence + 50)))  # Scale to 50-100%
                 
                 predictions.append({
                     'match_number': match.get('id'),
@@ -118,7 +186,11 @@ def get_event_predictions(event_code: str):
                     'blue_teams': blue_teams,
                     'red_opr_sum': round(red_opr, 1),
                     'blue_opr_sum': round(blue_opr, 1),
-                    'predicted_winner': 'red' if red_opr > blue_opr else 'blue'
+                    'predicted_winner': predicted_winner,
+                    'confidence_percentage': round(confidence, 1),
+                    'winner_confidence': winner_confidence,
+                    'red_rp_predictions': red_rps,
+                    'blue_rp_predictions': blue_rps
                 })
         
         return jsonify({
