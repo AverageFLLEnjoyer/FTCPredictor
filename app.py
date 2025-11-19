@@ -30,74 +30,29 @@ class FTCStatsCalculator:
         """Fetch matches for an event"""
         return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/matches") or []
 
-    def get_team_opr(self, team_number: str, event_code: str = None):
-        """Get OPR for a specific team - either from current event or latest available"""
-        try:
-            # Try to get OPR from the current event first
-            if event_code:
-                event_opr = self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/oprs")
-                if event_opr and 'teams' in event_opr:
-                    for team in event_opr['teams']:
-                        if str(team.get('teamNumber')) == str(team_number):
-                            return team.get('opr', 0)
-            
-            # Fallback: try to get team's overall OPR from current season
-            team_stats = self.make_api_call(f"teams/{team_number}/stats?season={CURRENT_SEASON}")
-            if team_stats and 'opr' in team_stats:
-                return team_stats['opr']
-            
-            # Fallback 2: try to get from any recent event
-            team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
-            if team_events:
-                # Get the most recent event with OPR data
-                for event in reversed(team_events):
-                    event_opr = self.make_api_call(f"events/{CURRENT_SEASON}/{event['code']}/oprs")
-                    if event_opr and 'teams' in event_opr:
-                        for team_data in event_opr['teams']:
-                            if str(team_data.get('teamNumber')) == str(team_number):
-                                return team_data.get('opr', 0)
-            
-            return 0
-        except:
-            return 0
+    def get_event_teams_stats(self, event_code: str):
+        """Get team stats (including OPR) for an event"""
+        return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/teams") or []
 
-    def calculate_opr(self, matches, event_code: str):
-        """Get OPR data for all teams in the event"""
-        if not matches:
+    def calculate_opr(self, event_code: str):
+        """Get OPR data from event team stats"""
+        # Get team stats for the event
+        team_stats_list = self.get_event_teams_stats(event_code)
+        
+        if not team_stats_list:
+            print(f"No team stats found for event {event_code}")
             return {}
         
-        # Get all teams from the matches
-        teams = set()
-        for match in matches:
-            for team_data in match.get('teams', []):
-                team_num = str(team_data.get('teamNumber'))
-                if team_num:
-                    teams.add(team_num)
-        
-        # Try to get event OPR data first
-        try:
-            event_opr_data = self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/oprs")
-            if event_opr_data and 'teams' in event_opr_data:
-                opr_data = {}
-                for team_data in event_opr_data['teams']:
-                    team_num = str(team_data.get('teamNumber'))
-                    opr_value = team_data.get('opr', 0)
-                    opr_data[team_num] = opr_value
-                    print(f"Found OPR for team {team_num}: {opr_value}")
-                
-                # Make sure we have all teams
-                for team in teams:
-                    if team not in opr_data:
-                        opr_data[team] = self.get_team_opr(team, event_code)
-                return opr_data
-        except Exception as e:
-            print(f"Could not get event OPR: {e}")
-        
-        # Fallback: get OPR for each team individually
         opr_data = {}
-        for team in teams:
-            opr_data[team] = self.get_team_opr(team, event_code)
-            print(f"Team {team} OPR: {opr_data[team]}")
+        for team_stats in team_stats_list:
+            team_number = str(team_stats.get('teamNumber'))
+            stats = team_stats.get('stats', {})
+            
+            # OPR should be in the stats field
+            opr = stats.get('opr', 0)
+            opr_data[team_number] = opr
+            
+            print(f"Team {team_number} OPR: {opr}")
         
         return opr_data
 
@@ -126,14 +81,22 @@ def get_event_predictions(event_code: str):
         
         print(f"Found {len(matches)} matches for event {event_code}")
         
-        # Get OPR data
-        opr_data = calculator.calculate_opr(matches, event_code)
+        # Get OPR data from event team stats
+        opr_data = calculator.calculate_opr(event_code)
         print(f"OPR data: {opr_data}")
         
+        # If no OPR data, try to calculate simple averages as fallback
+        if not opr_data or all(v == 0 for v in opr_data.values()):
+            print("No OPR data found, using simple average calculation")
+            opr_data = calculator.calculate_simple_averages(matches)
+        
         predictions = []
+        scheduled_matches = 0
+        
         for match in matches:
             # Only predict matches without scores
             if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
+                scheduled_matches += 1
                 red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'red']
                 blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'blue']
                 
@@ -152,7 +115,9 @@ def get_event_predictions(event_code: str):
         return jsonify({
             "event_code": event_code,
             "opr_data": opr_data,
-            "predictions": predictions
+            "predictions": predictions,
+            "scheduled_matches": scheduled_matches,
+            "total_matches": len(matches)
         })
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
@@ -165,13 +130,9 @@ def get_team_stats(team_number: str):
         if not team_info:
             return jsonify({"error": "Team not found"}), 404
         
-        # Get team OPR
-        team_opr = calculator.get_team_opr(team_number)
-        
         return jsonify({
             "team_info": team_info,
-            "opr": team_opr,
-            "message": f"Team {team_number} - OPR: {team_opr}"
+            "message": f"Team {team_number} data loaded!"
         })
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
