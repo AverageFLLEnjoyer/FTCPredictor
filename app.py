@@ -34,15 +34,6 @@ class FTCStatsCalculator:
         """Get all teams participating in the event"""
         return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/teams") or []
 
-    def get_team_event_stats(self, team_number: str, event_code: str):
-        """Get team stats for a specific event"""
-        team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
-        if team_events:
-            for event in team_events:
-                if event.get('eventCode') == event_code:
-                    return event.get('stats', {})
-        return {}
-
     def calculate_opr(self, event_code: str):
         """Get OPR data for all teams in the event"""
         # Get all teams in the event
@@ -55,13 +46,16 @@ class FTCStatsCalculator:
         for team_data in event_teams:
             team_number = str(team_data.get('teamNumber'))
             stats = team_data.get('stats', {})
+            
+            # Check if stats exist and have OPR data
             if stats and 'opr' in stats:
-                # Get the totalPointsNp OPR value
                 opr_components = stats['opr']
+                # Use totalPointsNp if available, otherwise fall back to 0
                 total_opr = opr_components.get('totalPointsNp', 0)
                 opr_data[team_number] = total_opr
                 print(f"Team {team_number} OPR: {total_opr}")
             else:
+                # If no OPR data, set to 0
                 opr_data[team_number] = 0
                 print(f"Team {team_number} no OPR data")
         
@@ -94,7 +88,7 @@ def get_event_predictions(event_code: str):
         
         # Get OPR data
         opr_data = calculator.calculate_opr(event_code)
-        print(f"OPR data: {opr_data}")
+        print(f"OPR data for {len(opr_data)} teams: {opr_data}")
         
         predictions = []
         scheduled_matches = 0
@@ -103,24 +97,46 @@ def get_event_predictions(event_code: str):
             # Only predict matches without scores
             if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
                 scheduled_matches += 1
-                red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'red']
-                blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'blue']
+                
+                # Extract teams from match data - handle different possible structures
+                red_teams = []
+                blue_teams = []
+                
+                # Handle different team data structures
+                teams = match.get('teams', [])
+                for team in teams:
+                    team_number = str(team.get('teamNumber'))
+                    alliance = team.get('alliance')
+                    if alliance == 'red':
+                        red_teams.append(team_number)
+                    elif alliance == 'blue':
+                        blue_teams.append(team_number)
                 
                 # Skip matches that don't have teams assigned yet
                 if not red_teams or not blue_teams:
-                    print(f"Match {match.get('id')} has no teams assigned yet")
+                    print(f"Match {match.get('id', 'unknown')} has incomplete teams: red={red_teams}, blue={blue_teams}")
                     continue
                 
+                # Calculate OPR sums
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
                 
+                # Determine winner
+                if red_opr > blue_opr:
+                    predicted_winner = 'red'
+                elif blue_opr > red_opr:
+                    predicted_winner = 'blue'
+                else:
+                    predicted_winner = 'tie'
+                
                 predictions.append({
-                    'match_number': match.get('id'),
+                    'match_number': match.get('id', 'unknown'),
                     'red_teams': red_teams,
                     'blue_teams': blue_teams,
                     'red_opr_sum': round(red_opr, 1),
                     'blue_opr_sum': round(blue_opr, 1),
-                    'predicted_winner': 'red' if red_opr > blue_opr else 'blue'
+                    'predicted_winner': predicted_winner,
+                    'confidence': abs(red_opr - blue_opr)
                 })
         
         return jsonify({
@@ -128,9 +144,13 @@ def get_event_predictions(event_code: str):
             "opr_data": opr_data,
             "predictions": predictions,
             "scheduled_matches": scheduled_matches,
+            "predicted_matches": len(predictions),
             "total_matches": len(matches)
         })
     except Exception as e:
+        import traceback
+        print(f"Error in predictions: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/team/<team_number>')
@@ -152,9 +172,6 @@ def get_team_stats(team_number: str):
 @app.route('/api/health')
 def health_check():
     return jsonify({"status": "ok", "message": "Server is running!"})
-
-# This is needed for Vercel
-app = app
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
