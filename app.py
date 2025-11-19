@@ -106,35 +106,26 @@ def get_event_predictions(event_code: str):
             # Only predict matches without scores
             if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
                 scheduled_matches += 1
-                red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'red']
-                blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'blue']
                 
-                # DEBUG: Check what we're working with
-                print(f"🔍 MATCH {match.get('id')} DEBUG:")
-                print(f"   Red teams: {red_teams}")
-                print(f"   Blue teams: {blue_teams}")
+                # DEBUG: See what's actually in the match
+                print(f"🔍 MATCH {match.get('id')} teams data:")
+                teams_data = match.get('teams', [])
+                print(f"   Teams array length: {len(teams_data)}")
+                print(f"   Teams array: {teams_data}")
+
+                # Let's see each team individually
+                for i, team in enumerate(teams_data):
+                    print(f"   Team {i}: alliance='{team.get('alliance')}', teamNumber='{team.get('teamNumber')}'")
+
+                # Then do the extraction
+                red_teams = [str(t['teamNumber']) for t in teams_data if t.get('alliance') == 'red']
+                blue_teams = [str(t['teamNumber']) for t in teams_data if t.get('alliance') == 'blue']
+
+                print(f"   Extracted red teams: {red_teams}")
+                print(f"   Extracted blue teams: {blue_teams}")
                 
-                # DEBUG: Check each team's OPR
-                red_opr_values = []
-                for team in red_teams:
-                    opr_val = opr_data.get(team, 0)
-                    red_opr_values.append(opr_val)
-                    print(f"   Team {team} OPR: {opr_val}")
-                
-                blue_opr_values = []
-                for team in blue_teams:
-                    opr_val = opr_data.get(team, 0)
-                    blue_opr_values.append(opr_val)
-                    print(f"   Team {team} OPR: {opr_val}")
-                
-                # Sum the OPRs
-                red_opr = sum(red_opr_values)
-                blue_opr = sum(blue_opr_values)
-                
-                print(f"   Red OPR sum: {red_opr} (from values: {red_opr_values})")
-                print(f"   Blue OPR sum: {blue_opr} (from values: {blue_opr_values})")
-                print(f"   Predicted winner: {'red' if red_opr > blue_opr else 'blue'}")
-                print("---")
+                red_opr = sum(opr_data.get(team, 0) for team in red_teams)
+                blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
                 
                 predictions.append({
                     'match_number': match.get('id'),
