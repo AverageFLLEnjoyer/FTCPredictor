@@ -32,17 +32,17 @@ class FTCStatsCalculator:
 
     def get_team_event_stats(self, team_number: str, event_code: str):
         """Get team stats for a specific event"""
-        print(f"Making API call for team {team_number} events...")
         team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
-        print(f"Team {team_number} events response: {team_events}")
         
-        if team_events:
+        if team_events and isinstance(team_events, list):
             for event in team_events:
-                print(f"Checking event: {event.get('eventCode')} vs {event_code}")
                 if event.get('eventCode') == event_code:
-                    print(f"Found matching event! Stats: {event.get('stats', {})}")
                     return event.get('stats', {})
-        print(f"No matching event found for team {team_number}")
+        elif team_events and isinstance(team_events, dict):
+            # Handle case where it returns a single event object
+            if team_events.get('eventCode') == event_code:
+                return team_events.get('stats', {})
+        
         return {}
 
     def calculate_opr(self, event_code: str):
@@ -92,31 +92,28 @@ class FTCStatsCalculator:
             if stats and 'avg' in stats:
                 avg_stats = stats['avg']
                 
-                # Get the RP averages from the avg stats
+                # Get the RP averages from the avg stats - no protection, just get the values
                 movement_avg = avg_stats.get('movementRp', 0) * 100
                 goal_avg = avg_stats.get('goalRp', 0) * 100
                 pattern_avg = avg_stats.get('patternRp', 0) * 100
                 
-                # Data is available, even if values are 0
                 rp_data[team] = {
-                    'movement_rp': movement_avg > 50,  # Prediction: likely to earn RP
+                    'movement_rp': movement_avg > 50,
                     'movement_avg': round(movement_avg),
                     'goal_rp': goal_avg > 50,
                     'goal_avg': round(goal_avg),
                     'pattern_rp': pattern_avg > 50,
-                    'pattern_avg': round(pattern_avg),
-                    'has_data': True  # Flag to indicate we have RP data
+                    'pattern_avg': round(pattern_avg)
                 }
             else:
-                # No stats available at all
+                # No stats available - just return zeros
                 rp_data[team] = {
                     'movement_rp': False,
                     'movement_avg': 0,
                     'goal_rp': False, 
                     'goal_avg': 0,
                     'pattern_rp': False,
-                    'pattern_avg': 0,
-                    'has_data': False  # Flag to indicate no RP data
+                    'pattern_avg': 0
                 }
         
         return rp_data
@@ -188,12 +185,12 @@ def get_event_predictions(event_code: str):
                     pattern_avg = (team1_rp.get('pattern_avg', 0) + team2_rp.get('pattern_avg', 0)) / 2
                     
                     return {
-                        'movement_rp': movement_avg > 0.5,
-                        'movement_avg': round(movement_avg * 100),
-                        'goal_rp': goal_avg > 0.5,
-                        'goal_avg': round(goal_avg * 100),
-                        'pattern_rp': pattern_avg > 0.5,
-                        'pattern_avg': round(pattern_avg * 100)
+                        'movement_rp': movement_avg > 50,
+                        'movement_avg': round(movement_avg),
+                        'goal_rp': goal_avg > 50,
+                        'goal_avg': round(goal_avg),
+                        'pattern_rp': pattern_avg > 50,
+                        'pattern_avg': round(pattern_avg)
                     }
                 
                 red_rps = predict_alliance_rps(red_teams)
@@ -243,8 +240,6 @@ def get_team_stats(team_number: str):
 @app.route('/api/health')
 def health_check():
     return jsonify({"status": "ok", "message": "Server is running!"})
-
-app = app
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
