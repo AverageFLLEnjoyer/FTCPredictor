@@ -30,29 +30,43 @@ class FTCStatsCalculator:
         """Fetch matches for an event"""
         return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/matches") or []
 
-    def get_event_teams_stats(self, event_code: str):
-        """Get team stats (including OPR) for an event"""
-        return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/teams") or []
+    def get_team_event_stats(self, team_number: str, event_code: str):
+        """Get team stats for a specific event"""
+        team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
+        if team_events:
+            for event in team_events:
+                if event.get('eventCode') == event_code:
+                    return event.get('stats', {})
+        return {}
 
     def calculate_opr(self, event_code: str):
-        """Get OPR data from event team stats"""
-        # Get team stats for the event
-        team_stats_list = self.get_event_teams_stats(event_code)
-        
-        if not team_stats_list:
-            print(f"No team stats found for event {event_code}")
+        """Get OPR data for all teams in the event"""
+        # First, get all teams in the event
+        matches = self.get_event_matches(event_code)
+        if not matches:
             return {}
         
+        # Get unique teams
+        teams = set()
+        for match in matches:
+            for team_data in match.get('teams', []):
+                team_num = str(team_data.get('teamNumber'))
+                if team_num:
+                    teams.add(team_num)
+        
+        # Get OPR for each team
         opr_data = {}
-        for team_stats in team_stats_list:
-            team_number = str(team_stats.get('teamNumber'))
-            stats = team_stats.get('stats', {})
-            
-            # OPR should be in the stats field
-            opr = stats.get('opr', 0)
-            opr_data[team_number] = opr
-            
-            print(f"Team {team_number} OPR: {opr}")
+        for team in teams:
+            stats = self.get_team_event_stats(team, event_code)
+            if stats and 'opr' in stats:
+                # Get the totalPointsNp OPR value (82.72 for team 14380)
+                opr_components = stats['opr']
+                total_opr = opr_components.get('totalPointsNp', 0)
+                opr_data[team] = total_opr
+                print(f"Team {team} OPR: {total_opr}")
+            else:
+                opr_data[team] = 0
+                print(f"Team {team} no OPR data")
         
         return opr_data
 
@@ -81,14 +95,9 @@ def get_event_predictions(event_code: str):
         
         print(f"Found {len(matches)} matches for event {event_code}")
         
-        # Get OPR data from event team stats
+        # Get OPR data
         opr_data = calculator.calculate_opr(event_code)
         print(f"OPR data: {opr_data}")
-        
-        # If no OPR data, try to calculate simple averages as fallback
-        if not opr_data or all(v == 0 for v in opr_data.values()):
-            print("No OPR data found, using simple average calculation")
-            opr_data = calculator.calculate_simple_averages(matches)
         
         predictions = []
         scheduled_matches = 0
