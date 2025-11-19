@@ -31,14 +31,15 @@ class FTCStatsCalculator:
         return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/matches") or []
 
     def get_event_teams(self, event_code: str):
-        """Get all teams participating in the event"""
+        """Get all teams participating in the event with their stats"""
         return self.make_api_call(f"events/{CURRENT_SEASON}/{event_code}/teams") or []
 
     def calculate_opr(self, event_code: str):
         """Get OPR data for all teams in the event"""
-        # Get all teams in the event
+        # Get all teams in the event with their stats
         event_teams = self.get_event_teams(event_code)
         if not event_teams:
+            print(f"No teams found for event {event_code}")
             return {}
         
         # Get OPR for each team
@@ -47,15 +48,15 @@ class FTCStatsCalculator:
             team_number = str(team_data.get('teamNumber'))
             stats = team_data.get('stats', {})
             
-            # Check if stats exist and have OPR data
+            print(f"Team {team_number} stats: {stats}")
+            
             if stats and 'opr' in stats:
                 opr_components = stats['opr']
-                # Use totalPointsNp if available, otherwise fall back to 0
+                # Use totalPointsNp OPR value
                 total_opr = opr_components.get('totalPointsNp', 0)
                 opr_data[team_number] = total_opr
                 print(f"Team {team_number} OPR: {total_opr}")
             else:
-                # If no OPR data, set to 0
                 opr_data[team_number] = 0
                 print(f"Team {team_number} no OPR data")
         
@@ -98,13 +99,11 @@ def get_event_predictions(event_code: str):
             if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
                 scheduled_matches += 1
                 
-                # Extract teams from match data - handle different possible structures
+                # Extract teams from match data
                 red_teams = []
                 blue_teams = []
                 
-                # Handle different team data structures
-                teams = match.get('teams', [])
-                for team in teams:
+                for team in match.get('teams', []):
                     team_number = str(team.get('teamNumber'))
                     alliance = team.get('alliance')
                     if alliance == 'red':
@@ -114,10 +113,10 @@ def get_event_predictions(event_code: str):
                 
                 # Skip matches that don't have teams assigned yet
                 if not red_teams or not blue_teams:
-                    print(f"Match {match.get('id', 'unknown')} has incomplete teams: red={red_teams}, blue={blue_teams}")
+                    print(f"Match {match.get('id')} has incomplete teams")
                     continue
                 
-                # Calculate OPR sums
+                # Calculate OPR sums for alliances
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
                 
@@ -130,7 +129,7 @@ def get_event_predictions(event_code: str):
                     predicted_winner = 'tie'
                 
                 predictions.append({
-                    'match_number': match.get('id', 'unknown'),
+                    'match_number': match.get('id'),
                     'red_teams': red_teams,
                     'blue_teams': blue_teams,
                     'red_opr_sum': round(red_opr, 1),
