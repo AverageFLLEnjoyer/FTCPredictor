@@ -161,6 +161,15 @@
             text-align: center;
             margin-bottom: 10px;
         }
+        .rp-loading {
+            animation: pulse 1.5s infinite;
+            color: #3498db;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
     </style>
 </head>
 <body>
@@ -196,16 +205,12 @@
     </main>
 
     <script>
+        let currentEventCode = '';
+        let currentPredictions = [];
+
         function showTab(tabName) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.style.display = 'none';
-            });
-            // Remove active from all buttons
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            // Show selected tab
+            document.querySelectorAll('.tab-content').forEach(tab => tab.style.display = 'none');
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
             document.getElementById(tabName + '-tab').style.display = 'block';
             event.target.classList.add('active');
         }
@@ -220,11 +225,13 @@
                 return;
             }
             
+            currentEventCode = eventCode;
             btn.disabled = true;
             btn.textContent = 'Loading...';
             results.innerHTML = '<div class="loading">📡 Fetching match data from FTC Scout...</div>';
             
             try {
+                // First get predictions (fast)
                 const response = await fetch(`/api/event/${eventCode}/predictions`);
                 const data = await response.json();
                 
@@ -232,13 +239,90 @@
                     throw new Error(data.error || 'Failed to fetch predictions');
                 }
                 
+                currentPredictions = data.predictions || [];
                 displayPredictions(data);
+                
+                // Then load RP data separately
+                loadRPData(eventCode);
+                
             } catch (error) {
                 results.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Get Predictions';
             }
+        }
+
+        async function loadRPData(eventCode) {
+            const results = document.getElementById('predictions-results');
+            
+            try {
+                const response = await fetch(`/api/event/${eventCode}/rp-data`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to fetch RP data');
+                }
+                
+                // Update predictions with RP data
+                updatePredictionsWithRP(data.rp_data);
+                
+            } catch (error) {
+                console.error('Failed to load RP data:', error);
+                // Show error in RP sections
+                document.querySelectorAll('.rp-loading').forEach(el => {
+                    el.innerHTML = '<div style="color: #e74c3c;">❌ RP data failed to load</div>';
+                });
+            }
+        }
+
+        function updatePredictionsWithRP(rpData) {
+            const predictions = document.querySelectorAll('.prediction');
+            
+            predictions.forEach((predElement, index) => {
+                const pred = currentPredictions[index];
+                if (!pred) return;
+                
+                const redRps = predictAllianceRPs(pred.red_teams, rpData);
+                const blueRps = predictAllianceRPs(pred.blue_teams, rpData);
+                
+                // Update the RP sections
+                const redRpSection = predElement.querySelector('.alliance-rp:first-child');
+                const blueRpSection = predElement.querySelector('.alliance-rp:last-child');
+                
+                if (redRpSection) {
+                    const existingContent = redRpSection.innerHTML.split('<br>').slice(0, 3).join('<br>');
+                    redRpSection.innerHTML = existingContent + displayRPPredictions(redRps);
+                }
+                
+                if (blueRpSection) {
+                    const existingContent = blueRpSection.innerHTML.split('<br>').slice(0, 3).join('<br>');
+                    blueRpSection.innerHTML = existingContent + displayRPPredictions(blueRps);
+                }
+            });
+        }
+
+        function predictAllianceRPs(teams, rpData) {
+            if (!teams || teams.length === 0) {
+                return { movement_rp: false, movement_prob: 0, goal_rp: false, goal_prob: 0, pattern_rp: false, pattern_prob: 0 };
+            }
+            
+            const movement_probs = teams.map(team => rpData[team]?.movement_rp_prob || 0);
+            const goal_probs = teams.map(team => rpData[team]?.goal_rp_prob || 0);
+            const pattern_probs = teams.map(team => rpData[team]?.pattern_rp_prob || 0);
+            
+            const avg_movement = movement_probs.reduce((a, b) => a + b, 0) / movement_probs.length;
+            const avg_goal = goal_probs.reduce((a, b) => a + b, 0) / goal_probs.length;
+            const avg_pattern = pattern_probs.reduce((a, b) => a + b, 0) / pattern_probs.length;
+            
+            return {
+                movement_rp: avg_movement > 0.5,
+                movement_prob: Math.round(avg_movement * 100),
+                goal_rp: avg_goal > 0.5,
+                goal_prob: Math.round(avg_goal * 100),
+                pattern_rp: avg_pattern > 0.5,
+                pattern_prob: Math.round(avg_pattern * 100)
+            };
         }
 
         function displayPredictions(data) {
@@ -284,13 +368,13 @@
                                     <strong>🔴 Red Alliance</strong><br>
                                     Teams: ${pred.red_teams.join(', ')}<br>
                                     Total OPR: ${pred.red_opr_sum.toFixed(1)}<br>
-                                    ${displayRPPredictions(pred.red_rp_predictions || {})}
+                                    <div class="rp-loading">🔄 Loading RP data...</div>
                                 </div>
                                 <div class="alliance-rp">
                                     <strong>🔵 Blue Alliance</strong><br>
                                     Teams: ${pred.blue_teams.join(', ')}<br>
                                     Total OPR: ${pred.blue_opr_sum.toFixed(1)}<br>
-                                    ${displayRPPredictions(pred.blue_rp_predictions || {})}
+                                    <div class="rp-loading">🔄 Loading RP data...</div>
                                 </div>
                             </div>
                             <div style="text-align: center; margin-top: 10px;">
@@ -309,29 +393,24 @@
         }
 
         function displayRPPredictions(rpData) {
-            // Check if RP data exists, if not show placeholder
-            if (!rpData.movement_rp && !rpData.goal_rp && !rpData.pattern_rp) {
-                return `<div style="margin-top: 8px; color: #7f8c8d; font-style: italic;">RP data loading...</div>`;
-            }
-            
             return `
                 <div style="margin-top: 8px;">
                     <div class="rp-item">
                         <span>🚚 Movement RP:</span>
                         <span class="${rpData.movement_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.movement_rp ? '✅' : '❌'} ${rpData.movement_prob || 0}%
+                            ${rpData.movement_rp ? '✅' : '❌'} ${rpData.movement_prob}%
                         </span>
                     </div>
                     <div class="rp-item">
                         <span>🎯 Goal RP:</span>
                         <span class="${rpData.goal_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.goal_rp ? '✅' : '❌'} ${rpData.goal_prob || 0}%
+                            ${rpData.goal_rp ? '✅' : '❌'} ${rpData.goal_prob}%
                         </span>
                     </div>
                     <div class="rp-item">
                         <span>📊 Pattern RP:</span>
                         <span class="${rpData.pattern_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.pattern_rp ? '✅' : '❌'} ${rpData.pattern_prob || 0}%
+                            ${rpData.pattern_rp ? '✅' : '❌'} ${rpData.pattern_prob}%
                         </span>
                     </div>
                 </div>
