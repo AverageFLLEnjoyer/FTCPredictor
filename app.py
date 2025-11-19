@@ -87,43 +87,38 @@ class FTCStatsCalculator:
         
         rp_data = {}
         for team in teams:
-            print(f"=== DEBUG: Getting stats for team {team} ===")
             stats = self.get_team_event_stats(team, event_code)
-            print(f"Team {team} stats: {stats}")
             
             if stats and 'avg' in stats:
                 avg_stats = stats['avg']
-                print(f"Team {team} avg stats: {avg_stats}")
                 
-                # Get the RP averages from the avg stats - CORRECTED FIELD NAMES
-                movement_avg = avg_stats.get('movement_rp', 0) * 100  # Convert to percentage
-                goal_avg = avg_stats.get('goal_rp', 0) * 100
-                pattern_avg = avg_stats.get('pattern_rp', 0) * 100
+                # Get the RP averages from the avg stats
+                movement_avg = avg_stats.get('movementRp', 0) * 100
+                goal_avg = avg_stats.get('goalRp', 0) * 100
+                pattern_avg = avg_stats.get('patternRp', 0) * 100
                 
-                print(f"Team {team} RP values - movement: {movement_avg}%, goal: {goal_avg}%, pattern: {pattern_avg}%")
-                
+                # Data is available, even if values are 0
                 rp_data[team] = {
-                    'movement_rp': movement_avg > 50,  # Check if > 50% chance
+                    'movement_rp': movement_avg > 50,  # Prediction: likely to earn RP
                     'movement_avg': round(movement_avg),
                     'goal_rp': goal_avg > 50,
                     'goal_avg': round(goal_avg),
                     'pattern_rp': pattern_avg > 50,
-                    'pattern_avg': round(pattern_avg)
+                    'pattern_avg': round(pattern_avg),
+                    'has_data': True  # Flag to indicate we have RP data
                 }
-                print(f"Team {team} RP prediction: movement={movement_avg > 50}, goal={goal_avg > 50}, pattern={pattern_avg > 50}")
             else:
-                # No stats available
-                print(f"Team {team} - no stats or no avg field")
+                # No stats available at all
                 rp_data[team] = {
                     'movement_rp': False,
                     'movement_avg': 0,
                     'goal_rp': False, 
                     'goal_avg': 0,
                     'pattern_rp': False,
-                    'pattern_avg': 0
+                    'pattern_avg': 0,
+                    'has_data': False  # Flag to indicate no RP data
                 }
         
-        print(f"=== FINAL RP DATA: {rp_data} ===")
         return rp_data
 
 calculator = FTCStatsCalculator()
