@@ -302,11 +302,7 @@
         }
 
         function displayRPPredictions(rpData) {
-    // Check if we have RP data using the has_data flag
-    if (!rpData.has_data) {
-        return `<div style="margin-top: 8px; color: #7f8c8d; font-style: italic;">No RP data available</div>`;
-    }
-    
+    // ALWAYS display RP data, no more protection checks
     return `
         <div style="margin-top: 8px;">
             <div class="rp-item">
