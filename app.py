@@ -106,23 +106,8 @@ def get_event_predictions(event_code: str):
             # Only predict matches without scores
             if not match.get('scores') or not match['scores'].get('red') or not match['scores'].get('blue'):
                 scheduled_matches += 1
-                
-                # DEBUG: See what's actually in the match
-                print(f"🔍 MATCH {match.get('id')} teams data:")
-                teams_data = match.get('teams', [])
-                print(f"   Teams array length: {len(teams_data)}")
-                print(f"   Teams array: {teams_data}")
-
-                # Let's see each team individually
-                for i, team in enumerate(teams_data):
-                    print(f"   Team {i}: alliance='{team.get('alliance')}', teamNumber='{team.get('teamNumber')}'")
-
-                # Then do the extraction
-                red_teams = [str(t['teamNumber']) for t in teams_data if t.get('alliance') == 'red']
-                blue_teams = [str(t['teamNumber']) for t in teams_data if t.get('alliance') == 'blue']
-
-                print(f"   Extracted red teams: {red_teams}")
-                print(f"   Extracted blue teams: {blue_teams}")
+                red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']  # Fixed case
+                blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']  # Fixed case
                 
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
