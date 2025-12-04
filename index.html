@@ -50,6 +50,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
+            align-items: center;
         }
         input {
             padding: 10px;
@@ -146,6 +147,97 @@
             color: #7f8c8d;
             margin-top: 5px;
         }
+        
+        /* OPR Source Toggle */
+        .opr-toggle {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .toggle-option {
+            padding: 8px 16px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            background: white;
+        }
+        .toggle-option.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+        
+        /* Leaderboard Styles */
+        .leaderboard {
+            margin-top: 30px;
+        }
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .leaderboard-table th {
+            background: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            cursor: pointer;
+        }
+        .leaderboard-table th:hover {
+            background: #2980b9;
+        }
+        .leaderboard-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .leaderboard-table tr:hover {
+            background: #f8f9fa;
+        }
+        .leaderboard-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        .rank-cell {
+            font-weight: bold;
+            color: #2c3e50;
+            width: 50px;
+        }
+        .team-cell {
+            font-weight: bold;
+        }
+        .rp-cell {
+            text-align: center;
+        }
+        .win-rate-cell {
+            text-align: center;
+        }
+        .good-stat { color: #27ae60; font-weight: bold; }
+        .avg-stat { color: #f39c12; }
+        .bad-stat { color: #e74c3c; }
+        
+        /* Tooltip for highest OPR info */
+        .highest-opr-info {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 3px;
+        }
+        .info-icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            background: #3498db;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 16px;
+            font-size: 12px;
+            margin-left: 5px;
+            cursor: help;
+        }
     </style>
 </head>
 <body>
@@ -162,10 +254,23 @@
         <!-- Predictions Tab -->
         <div id="predictions-tab" class="tab-content">
             <h2>🔮 Match Predictions</h2>
+            
+            <!-- OPR Source Toggle -->
+            <div class="opr-toggle">
+                <span>OPR Source:</span>
+                <div class="toggle-option active" id="toggle-current" onclick="setOprSource('current')">
+                    Current Event OPR
+                </div>
+                <div class="toggle-option" id="toggle-highest" onclick="setOprSource('highest')">
+                    Highest Season OPR
+                </div>
+            </div>
+            
             <div class="input-group">
                 <input type="text" id="event-code" placeholder="Enter event code (e.g., AUBRQ1)" onkeyup="if(event.key==='Enter') getPredictions()">
                 <button onclick="getPredictions()" id="predict-btn">Get Predictions</button>
             </div>
+            
             <div id="predictions-results"></div>
         </div>
 
@@ -181,6 +286,9 @@
     </main>
 
     <script>
+        // Global variables
+        let currentOprSource = 'current'; // 'current' or 'highest'
+        
         function showTab(tabName) {
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
@@ -193,6 +301,21 @@
             // Show selected tab
             document.getElementById(tabName + '-tab').style.display = 'block';
             event.target.classList.add('active');
+        }
+        
+        function setOprSource(source) {
+            currentOprSource = source;
+            
+            // Update toggle UI
+            document.querySelectorAll('.toggle-option').forEach(option => {
+                option.classList.remove('active');
+            });
+            
+            if (source === 'current') {
+                document.getElementById('toggle-current').classList.add('active');
+            } else {
+                document.getElementById('toggle-highest').classList.add('active');
+            }
         }
 
         async function getPredictions() {
@@ -210,7 +333,7 @@
             results.innerHTML = '<div class="loading">📡 Fetching match data from FTC Scout...</div>';
             
             try {
-                const response = await fetch(`/api/event/${eventCode}/predictions`);
+                const response = await fetch(`/api/event/${eventCode}/predictions?opr_source=${currentOprSource}`);
                 const data = await response.json();
                 
                 if (!response.ok) {
@@ -229,23 +352,78 @@
         function displayPredictions(data) {
             const results = document.getElementById('predictions-results');
             
-            let html = `<h3>📊 OPR Data for ${data.event_code}</h3>`;
+            let html = `<h3>📊 OPR Data for ${data.event_code} `;
+            html += `<span style="font-size: 14px; color: #7f8c8d;">(Using: ${data.opr_source === 'highest_season' ? 'Highest Season OPR' : 'Current Event OPR'})</span></h3>`;
             
+            // Show OPR data with highest OPR info if available
             if (Object.keys(data.opr_data).length > 0) {
                 html += `<div class="opr-grid">`;
                 Object.entries(data.opr_data)
                     .sort((a, b) => b[1] - a[1])
                     .forEach(([team, opr]) => {
+                        const highestInfo = data.highest_opr_info && data.highest_opr_info[team];
+                        const isHighest = highestInfo && Math.abs(highestInfo.opr - opr) < 0.01;
+                        
                         html += `
                             <div class="opr-item">
                                 <strong>Team ${team}</strong><br>
                                 OPR: ${opr.toFixed(1)}
+                                ${highestInfo && data.opr_source === 'highest_season' ? 
+                                    `<div class="highest-opr-info">Achieved at: ${highestInfo.event_achieved || 'N/A'}</div>` : 
+                                    ''}
+                                ${isHighest && data.opr_source === 'current_event' ? 
+                                    '<div style="font-size: 11px; color: #27ae60;">⭐ Season High</div>' : ''}
                             </div>
                         `;
                     });
                 html += `</div>`;
             } else {
                 html += `<p>No OPR data available</p>`;
+            }
+            
+            // Display leaderboard
+            if (data.leaderboard && data.leaderboard.length > 0) {
+                html += `
+                    <div class="leaderboard">
+                        <h3>🏆 Predicted Leaderboard</h3>
+                        <p>Based on predicted performance in all matches (including past matches if any)</p>
+                        <table class="leaderboard-table" id="leaderboard-table">
+                            <thead>
+                                <tr>
+                                    <th onclick="sortLeaderboard('rank')">Rank</th>
+                                    <th onclick="sortLeaderboard('team')">Team</th>
+                                    <th onclick="sortLeaderboard('avg_rp')" title="Average Predicted RP per Match">Avg RP</th>
+                                    <th onclick="sortLeaderboard('total_rp')" title="Total Predicted RP">Total RP</th>
+                                    <th onclick="sortLeaderboard('matches')" title="Number of Predicted Matches">Matches</th>
+                                    <th onclick="sortLeaderboard('win_rate')" title="Predicted Win Rate">Win Rate</th>
+                                    <th onclick="sortLeaderboard('median_rp')" title="Median Predicted RP">Median RP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                
+                data.leaderboard.forEach((team, index) => {
+                    const winRateClass = team.win_rate >= 60 ? 'good-stat' : team.win_rate >= 40 ? 'avg-stat' : 'bad-stat';
+                    const avgRpClass = team.avg_predicted_rp >= 3 ? 'good-stat' : team.avg_predicted_rp >= 2 ? 'avg-stat' : 'bad-stat';
+                    
+                    html += `
+                        <tr>
+                            <td class="rank-cell">${index + 1}</td>
+                            <td class="team-cell">Team ${team.team_number}</td>
+                            <td class="rp-cell ${avgRpClass}">${team.avg_predicted_rp.toFixed(2)}</td>
+                            <td class="rp-cell">${team.total_predicted_rp}</td>
+                            <td class="rp-cell">${team.predicted_matches}</td>
+                            <td class="win-rate-cell ${winRateClass}">${team.win_rate}%</td>
+                            <td class="rp-cell">${team.median_rp}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
             }
             
             if (data.predictions && data.predictions.length > 0) {
@@ -302,19 +480,19 @@
                     <div class="rp-item">
                         <span>🚚 Movement RP:</span>
                         <span class="${rpData.movement_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.movement_rp ? '✅' : '❌'} ${rpData.movement_prob || 0}%
+                            ${rpData.movement_rp ? '✅' : '❌'} ${rpData.movement_avg || 0}%
                         </span>
                     </div>
                     <div class="rp-item">
                         <span>🎯 Goal RP:</span>
                         <span class="${rpData.goal_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.goal_rp ? '✅' : '❌'} ${rpData.goal_prob || 0}%
+                            ${rpData.goal_rp ? '✅' : '❌'} ${rpData.goal_avg || 0}%
                         </span>
                     </div>
                     <div class="rp-item">
                         <span>📊 Pattern RP:</span>
                         <span class="${rpData.pattern_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.pattern_rp ? '✅' : '❌'} ${rpData.pattern_prob || 0}%
+                            ${rpData.pattern_rp ? '✅' : '❌'} ${rpData.pattern_avg || 0}%
                         </span>
                     </div>
                 </div>
@@ -356,6 +534,56 @@
                 btn.disabled = false;
                 btn.textContent = 'Get Team Data';
             }
+        }
+        
+        // Leaderboard sorting function
+        function sortLeaderboard(column) {
+            const table = document.getElementById('leaderboard-table');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                const aCells = a.querySelectorAll('td');
+                const bCells = b.querySelectorAll('td');
+                
+                let aValue, bValue;
+                
+                switch(column) {
+                    case 'rank':
+                        aValue = parseInt(aCells[0].textContent);
+                        bValue = parseInt(bCells[0].textContent);
+                        return aValue - bValue;
+                    case 'team':
+                        aValue = parseInt(aCells[1].textContent.replace('Team ', ''));
+                        bValue = parseInt(bCells[1].textContent.replace('Team ', ''));
+                        return aValue - bValue;
+                    case 'avg_rp':
+                        aValue = parseFloat(aCells[2].textContent);
+                        bValue = parseFloat(bCells[2].textContent);
+                        return bValue - aValue; // Descending
+                    case 'total_rp':
+                        aValue = parseInt(aCells[3].textContent);
+                        bValue = parseInt(bCells[3].textContent);
+                        return bValue - aValue; // Descending
+                    case 'matches':
+                        aValue = parseInt(aCells[4].textContent);
+                        bValue = parseInt(bCells[4].textContent);
+                        return bValue - aValue; // Descending
+                    case 'win_rate':
+                        aValue = parseFloat(aCells[5].textContent.replace('%', ''));
+                        bValue = parseFloat(bCells[5].textContent.replace('%', ''));
+                        return bValue - aValue; // Descending
+                    case 'median_rp':
+                        aValue = parseInt(aCells[6].textContent);
+                        bValue = parseInt(bCells[6].textContent);
+                        return bValue - aValue; // Descending
+                    default:
+                        return 0;
+                }
+            });
+            
+            // Reappend sorted rows
+            rows.forEach(row => tbody.appendChild(row));
         }
     </script>
 </body>
