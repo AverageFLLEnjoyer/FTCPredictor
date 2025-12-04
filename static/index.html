@@ -627,30 +627,30 @@
             results.innerHTML = html;
         }
 
-        function displayRPPredictions(rpData) {
-    // Check if RP data exists
+       function displayRPPredictions(rpData) {
+            // Check if RP data exists
             if (!rpData) {
                 return `<div style="margin-top: 8px; color: #7f8c8d; font-style: italic;">No RP data available</div>`;
             }
             
             // Check if we have any RP data at all
-            const hasMovement = typeof rpData.movement_rp !== 'undefined';
-            const hasGoal = typeof rpData.goal_rp !== 'undefined';
-            const hasPattern = typeof rpData.pattern_rp !== 'undefined';
+            const hasMovement = rpData.movement_rp !== undefined || rpData.movement_avg !== undefined;
+            const hasGoal = rpData.goal_rp !== undefined || rpData.goal_avg !== undefined;
+            const hasPattern = rpData.pattern_rp !== undefined || rpData.pattern_avg !== undefined;
             
             if (!hasMovement && !hasGoal && !hasPattern) {
                 return `<div style="margin-top: 8px; color: #7f8c8d; font-style: italic;">RP data loading...</div>`;
             }
             
-            // Extract values with fallbacks
+            // Extract values with proper fallbacks
             const movementRp = rpData.movement_rp || false;
             const goalRp = rpData.goal_rp || false;
             const patternRp = rpData.pattern_rp || false;
             
-            // Use average values if available, otherwise use 0
-            const movementAvg = rpData.movement_avg || rpData.movement_prob || 0;
-            const goalAvg = rpData.goal_avg || rpData.goal_prob || 0;
-            const patternAvg = rpData.pattern_avg || rpData.pattern_prob || 0;
+            // Use average values if available
+            const movementAvg = rpData.movement_avg || (rpData.movement_prob !== undefined ? Math.round(rpData.movement_prob) : 0);
+            const goalAvg = rpData.goal_avg || (rpData.goal_prob !== undefined ? Math.round(rpData.goal_prob) : 0);
+            const patternAvg = rpData.pattern_avg || (rpData.pattern_prob !== undefined ? Math.round(rpData.pattern_prob) : 0);
             
             return `
                 <div style="margin-top: 8px;">
