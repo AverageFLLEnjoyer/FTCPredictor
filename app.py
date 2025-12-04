@@ -32,17 +32,27 @@ class FTCStatsCalculator:
 
     def get_team_event_stats(self, team_number: str, event_code: str):
         """Get team stats for a specific event"""
-        team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
-        
-        if team_events and isinstance(team_events, list):
-            for event in team_events:
-                if event.get('eventCode') == event_code:
-                    return event.get('stats', {})
-        elif team_events and isinstance(team_events, dict):
-            if team_events.get('eventCode') == event_code:
-                return team_events.get('stats', {})
-        
-        return {}
+        try:
+            # Use the correct API endpoint
+            team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
+            
+            if team_events:
+                # Handle both list and dict responses
+                events_list = team_events if isinstance(team_events, list) else [team_events]
+                
+                for event in events_list:
+                    if event.get('eventCode') == event_code:
+                        stats = event.get('stats')
+                        if stats:  # Check if stats exists and is not None
+                            return stats
+                        else:
+                            # If stats is None, return empty dict
+                            return {}
+            
+            return {}
+        except Exception as e:
+            print(f"Error getting team event stats: {e}")
+            return {}
 
     def get_team_season_stats(self, team_number: str):
         """Get all events for a team in current season to find highest OPR"""
@@ -75,7 +85,7 @@ class FTCStatsCalculator:
         """Get OPR data for all teams in the event"""
         matches = self.get_event_matches(event_code)
         if not matches:
-            return {}
+            return {}, {}
         
         teams = set()
         for match in matches:
@@ -106,17 +116,18 @@ class FTCStatsCalculator:
                         'event_achieved': 'N/A'
                     }
             else:
-                # Use current event OPR (existing logic)
+                # Use current event OPR
                 stats = self.get_team_event_stats(team, event_code)
                 if stats and 'opr' in stats:
                     opr_components = stats['opr']
+                    # Get the totalPointsNp value which is the OPR
                     total_opr = opr_components.get('totalPointsNp', 0)
                     opr_data[team] = total_opr
                 else:
                     opr_data[team] = 0
         
         return opr_data, highest_opr_info
-
+    
     def calculate_rp_simple(self, event_code: str):
         """Simple RP calculation using team event stats"""
         matches = self.get_event_matches(event_code)
