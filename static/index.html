@@ -97,6 +97,13 @@
             border-radius: 5px;
             border-left: 4px solid #3498db;
         }
+        .past-match {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #95a5a6;
+        }
         .loading {
             text-align: center;
             padding: 20px;
@@ -225,18 +232,26 @@
             color: #7f8c8d;
             margin-top: 3px;
         }
-        .info-icon {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            background: #3498db;
-            color: white;
-            border-radius: 50%;
+        
+        /* Accuracy display */
+        .accuracy-display {
+            background: #ecf0f1;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 15px 0;
             text-align: center;
-            line-height: 16px;
-            font-size: 12px;
-            margin-left: 5px;
-            cursor: help;
+            font-weight: bold;
+        }
+        .accuracy-good { color: #27ae60; }
+        .accuracy-avg { color: #f39c12; }
+        .accuracy-bad { color: #e74c3c; }
+        
+        /* Section headers */
+        .section-header {
+            margin-top: 30px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+            color: #2c3e50;
         }
     </style>
 </head>
@@ -352,17 +367,32 @@
         function displayPredictions(data) {
             const results = document.getElementById('predictions-results');
             
-            let html = `<h3>📊 OPR Data for ${data.event_code} `;
-            html += `<span style="font-size: 14px; color: #7f8c8d;">(Using: ${data.opr_source === 'highest_season' ? 'Highest Season OPR' : 'Current Event OPR'})</span></h3>`;
+            let html = '';
             
-            // Show OPR data with highest OPR info if available
+            // Event summary
+            html += `<div class="accuracy-display">
+                <h3>Event: ${data.event_code}</h3>
+                <p>Total Matches: ${data.total_matches} | Played: ${data.played_matches} | Scheduled: ${data.scheduled_matches}</p>
+                <p>Using: <strong>${data.opr_source === 'highest_season' ? 'Highest Season OPR' : 'Current Event OPR'}</strong></p>
+            </div>`;
+            
+            // Show accuracy if there are past matches
+            if (data.past_matches && data.past_matches.length > 0) {
+                const accuracyClass = data.prediction_accuracy >= 70 ? 'accuracy-good' : 
+                                    data.prediction_accuracy >= 50 ? 'accuracy-avg' : 'accuracy-bad';
+                html += `<div class="accuracy-display ${accuracyClass}">
+                    📊 Prediction Accuracy: ${data.prediction_accuracy}% (${data.past_matches.length} matches analyzed)
+                </div>`;
+            }
+            
+            // OPR Data section
+            html += `<h3 class="section-header">📊 OPR Data</h3>`;
             if (Object.keys(data.opr_data).length > 0) {
                 html += `<div class="opr-grid">`;
                 Object.entries(data.opr_data)
                     .sort((a, b) => b[1] - a[1])
                     .forEach(([team, opr]) => {
                         const highestInfo = data.highest_opr_info && data.highest_opr_info[team];
-                        const isHighest = highestInfo && Math.abs(highestInfo.opr - opr) < 0.01;
                         
                         html += `
                             <div class="opr-item">
@@ -371,8 +401,6 @@
                                 ${highestInfo && data.opr_source === 'highest_season' ? 
                                     `<div class="highest-opr-info">Achieved at: ${highestInfo.event_achieved || 'N/A'}</div>` : 
                                     ''}
-                                ${isHighest && data.opr_source === 'current_event' ? 
-                                    '<div style="font-size: 11px; color: #27ae60;">⭐ Season High</div>' : ''}
                             </div>
                         `;
                     });
@@ -381,25 +409,24 @@
                 html += `<p>No OPR data available</p>`;
             }
             
-            // Display leaderboard
+            // Leaderboard section
             if (data.leaderboard && data.leaderboard.length > 0) {
                 html += `
-                    <div class="leaderboard">
-                        <h3>🏆 Predicted Leaderboard</h3>
-                        <p>Based on predicted performance in all matches (including past matches if any)</p>
-                        <table class="leaderboard-table" id="leaderboard-table">
-                            <thead>
-                                <tr>
-                                    <th onclick="sortLeaderboard('rank')">Rank</th>
-                                    <th onclick="sortLeaderboard('team')">Team</th>
-                                    <th onclick="sortLeaderboard('avg_rp')" title="Average Predicted RP per Match">Avg RP</th>
-                                    <th onclick="sortLeaderboard('total_rp')" title="Total Predicted RP">Total RP</th>
-                                    <th onclick="sortLeaderboard('matches')" title="Number of Predicted Matches">Matches</th>
-                                    <th onclick="sortLeaderboard('win_rate')" title="Predicted Win Rate">Win Rate</th>
-                                    <th onclick="sortLeaderboard('median_rp')" title="Median Predicted RP">Median RP</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                    <h3 class="section-header">🏆 Predicted Leaderboard</h3>
+                    <p>Based on predicted performance in upcoming matches</p>
+                    <table class="leaderboard-table" id="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th onclick="sortLeaderboard('rank')">Rank</th>
+                                <th onclick="sortLeaderboard('team')">Team</th>
+                                <th onclick="sortLeaderboard('avg_rp')" title="Average Predicted RP per Match">Avg RP</th>
+                                <th onclick="sortLeaderboard('total_rp')" title="Total Predicted RP">Total RP</th>
+                                <th onclick="sortLeaderboard('matches')" title="Number of Predicted Matches">Matches</th>
+                                <th onclick="sortLeaderboard('win_rate')" title="Predicted Win Rate">Win Rate</th>
+                                <th onclick="sortLeaderboard('median_rp')" title="Median Predicted RP">Median RP</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                 `;
                 
                 data.leaderboard.forEach((team, index) => {
@@ -420,14 +447,55 @@
                 });
                 
                 html += `
-                            </tbody>
-                        </table>
-                    </div>
+                        </tbody>
+                    </table>
                 `;
             }
             
+            // Past Matches section
+            if (data.past_matches && data.past_matches.length > 0) {
+                html += `<h3 class="section-header">📜 Past Match Results (${data.past_matches.length} matches)</h3>`;
+                data.past_matches.forEach(match => {
+                    const isCorrect = match.correct_prediction;
+                    const actualWinnerColor = match.actual_winner === 'red' ? '#e74c3c' : '#3498db';
+                    const predictedWinnerColor = match.predicted_winner === 'red' ? '#e74c3c' : '#3498db';
+                    
+                    html += `
+                        <div class="past-match">
+                            <strong>Match ${match.match_number}</strong>
+                            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+                                <div style="flex: 1;">
+                                    <strong style="color: #e74c3c;">🔴 Red Alliance</strong><br>
+                                    Teams: ${match.red_teams.join(', ')}<br>
+                                    Score: ${match.red_score}<br>
+                                    OPR Sum: ${match.red_opr_sum}
+                                </div>
+                                <div style="flex: 1; text-align: center;">
+                                    <div style="font-size: 18px; font-weight: bold; margin: 10px 0;">
+                                        <span style="color: ${actualWinnerColor};">${match.actual_winner.toUpperCase()} WON</span>
+                                    </div>
+                                    <div style="color: ${isCorrect ? '#27ae60' : '#e74c3c'};">
+                                        ${isCorrect ? '✅ Prediction Correct' : '❌ Prediction Incorrect'}
+                                    </div>
+                                </div>
+                                <div style="flex: 1; text-align: right;">
+                                    <strong style="color: #3498db;">🔵 Blue Alliance</strong><br>
+                                    Teams: ${match.blue_teams.join(', ')}<br>
+                                    Score: ${match.blue_score}<br>
+                                    OPR Sum: ${match.blue_opr_sum}
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px; text-align: center; color: #7f8c8d;">
+                                Predicted Winner: <span style="color: ${predictedWinnerColor}; font-weight: bold;">${match.predicted_winner.toUpperCase()}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            // Upcoming Predictions section
             if (data.predictions && data.predictions.length > 0) {
-                html += `<h3>🎯 Match Predictions (${data.predictions.length} matches)</h3>`;
+                html += `<h3 class="section-header">🎯 Upcoming Match Predictions (${data.predictions.length} matches)</h3>`;
                 data.predictions.forEach(pred => {
                     const winnerColor = pred.predicted_winner === 'red' ? '#e74c3c' : '#3498db';
                     
@@ -462,15 +530,15 @@
                         </div>
                     `;
                 });
-            } else {
-                html += `<p>No upcoming matches to predict</p>`;
+            } else if (data.scheduled_matches === 0) {
+                html += `<p>No upcoming matches scheduled</p>`;
             }
             
             results.innerHTML = html;
         }
 
         function displayRPPredictions(rpData) {
-            // Check if RP data exists, if not show placeholder
+            // Check if RP data exists
             if (!rpData.movement_rp && !rpData.goal_rp && !rpData.pattern_rp) {
                 return `<div style="margin-top: 8px; color: #7f8c8d; font-style: italic;">RP data loading...</div>`;
             }
@@ -539,6 +607,8 @@
         // Leaderboard sorting function
         function sortLeaderboard(column) {
             const table = document.getElementById('leaderboard-table');
+            if (!table) return;
+            
             const tbody = table.querySelector('tbody');
             const rows = Array.from(tbody.querySelectorAll('tr'));
             
