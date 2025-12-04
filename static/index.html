@@ -578,6 +578,8 @@
                             <div style="margin-top: 10px; text-align: center; color: #7f8c8d;">
                                 Predicted Winner: <span style="color: ${predictedWinnerColor}; font-weight: bold;">${match.predicted_winner.toUpperCase()}</span>
                             </div>
+                            
+                            ${displayRPBreakdown(match)}
                         </div>
                     `;
                 });
@@ -627,7 +629,39 @@
             results.innerHTML = html;
         }
 
-       function displayRPPredictions(rpData) {
+        function displayRPBreakdown(match) {
+            if (!match.red_rp_breakdown) {
+                return '<div style="margin-top: 10px; color: #7f8c8d; font-size: 14px;">RP breakdown not available</div>';
+            }
+            
+            const redBreakdown = match.red_rp_breakdown;
+            const blueBreakdown = match.blue_rp_breakdown;
+            
+            return `
+                <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 14px;">
+                    <div style="flex: 1; background: #ffe6e6; padding: 8px; border-radius: 5px;">
+                        <strong>🔴 Red RP:</strong> ${match.red_rp}<br>
+                        <div style="margin-left: 10px;">
+                            🚚 Movement: +${redBreakdown.movement}<br>
+                            🎯 Goal: +${redBreakdown.goal}<br>
+                            📊 Pattern: +${redBreakdown.pattern}<br>
+                            🏆 Win: +${redBreakdown.win}
+                        </div>
+                    </div>
+                    <div style="flex: 1; background: #e6f3ff; padding: 8px; border-radius: 5px; margin-left: 10px;">
+                        <strong>🔵 Blue RP:</strong> ${match.blue_rp}<br>
+                        <div style="margin-left: 10px;">
+                            🚚 Movement: +${blueBreakdown.movement}<br>
+                            🎯 Goal: +${blueBreakdown.goal}<br>
+                            📊 Pattern: +${blueBreakdown.pattern}<br>
+                            🏆 Win: +${blueBreakdown.win}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function displayRPPredictions(rpData) {
             // Check if RP data exists
             if (!rpData) {
                 return `<div style="margin-top: 8px; color: #7f8c8d; font-style: italic;">No RP data available</div>`;
@@ -675,6 +709,7 @@
                 </div>
             `;
         }
+        
         async function getTeamData() {
             const teamNumber = document.getElementById('team-number').value.trim();
             const btn = document.getElementById('team-btn');
