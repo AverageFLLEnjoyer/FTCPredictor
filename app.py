@@ -127,7 +127,7 @@ class FTCStatsCalculator:
                     opr_data[team] = 0
         
         return opr_data, highest_opr_info
-    
+
     def calculate_rp_simple(self, event_code: str):
         """Simple RP calculation using team event stats"""
         matches = self.get_event_matches(event_code)
@@ -472,38 +472,68 @@ def get_event_predictions(event_code: str):
                 # Calculate what the prediction would have been
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
-                predicted_winner = 'red' if red_opr > blue_opr else 'blue'
+                predicted_winner = 'red' if red_opr > blue_opr else 'blue' if blue_opr > red_opr else 'tie'
                 
-                # Calculate actual RP for display
+                # Calculate actual RP for display - FIXED LOGIC
                 red_rp_total = 0
                 blue_rp_total = 0
                 
-                # Movement RP
-                red_movement = match['scores']['red'].get('movementBonus', False)
-                blue_movement = match['scores']['blue'].get('movementBonus', False)
-                if red_movement: red_rp_total += 1
-                if blue_movement: blue_rp_total += 1
+                # Get RP bonuses from scores
+                red_scores = match['scores']['red']
+                blue_scores = match['scores']['blue']
                 
-                # Goal RP
-                red_goal = match['scores']['red'].get('goalBonus', False)
-                blue_goal = match['scores']['blue'].get('goalBonus', False)
-                if red_goal: red_rp_total += 1
-                if blue_goal: blue_rp_total += 1
+                # Movement RP (+1 RP if movementBonus is true)
+                red_movement = red_scores.get('movementBonus', False)
+                blue_movement = blue_scores.get('movementBonus', False)
+                red_movement_rp = 1 if red_movement else 0
+                blue_movement_rp = 1 if blue_movement else 0
                 
-                # Pattern RP
-                red_pattern = match['scores']['red'].get('patternBonus', False)
-                blue_pattern = match['scores']['blue'].get('patternBonus', False)
-                if red_pattern: red_rp_total += 1
-                if blue_pattern: blue_rp_total += 1
+                # Goal RP (+1 RP if goalBonus is true)
+                red_goal = red_scores.get('goalBonus', False)
+                blue_goal = blue_scores.get('goalBonus', False)
+                red_goal_rp = 1 if red_goal else 0
+                blue_goal_rp = 1 if blue_goal else 0
                 
-                # Win/Tie RP
+                # Pattern RP (+1 RP if patternBonus is true)
+                red_pattern = red_scores.get('patternBonus', False)
+                blue_pattern = blue_scores.get('patternBonus', False)
+                red_pattern_rp = 1 if red_pattern else 0
+                blue_pattern_rp = 1 if blue_pattern else 0
+                
+                # DEBUG: Print RP breakdown for each match
+                print(f"\nMatch {match_id} RP Breakdown:")
+                print(f"  Red Alliance {red_teams}:")
+                print(f"    Movement: {red_movement} (+{red_movement_rp} RP)")
+                print(f"    Goal: {red_goal} (+{red_goal_rp} RP)")
+                print(f"    Pattern: {red_pattern} (+{red_pattern_rp} RP)")
+                print(f"  Blue Alliance {blue_teams}:")
+                print(f"    Movement: {blue_movement} (+{blue_movement_rp} RP)")
+                print(f"    Goal: {blue_goal} (+{blue_goal_rp} RP)")
+                print(f"    Pattern: {blue_pattern} (+{blue_pattern_rp} RP)")
+                
+                # Win/Tie RP (FTC 2025: +3 for win, +1 for tie)
                 if actual_winner == 'red':
-                    red_rp_total += 3
+                    red_win_rp = 3
+                    blue_win_rp = 0
+                    red_win = 1
+                    blue_win = 0
                 elif actual_winner == 'blue':
-                    blue_rp_total += 3
+                    red_win_rp = 0
+                    blue_win_rp = 3
+                    red_win = 0
+                    blue_win = 1
                 else:  # tie
-                    red_rp_total += 1
-                    blue_rp_total += 1
+                    red_win_rp = 1
+                    blue_win_rp = 1
+                    red_win = 0.5
+                    blue_win = 0.5
+                
+                # Calculate total RP
+                red_rp_total = red_movement_rp + red_goal_rp + red_pattern_rp + red_win_rp
+                blue_rp_total = blue_movement_rp + blue_goal_rp + blue_pattern_rp + blue_win_rp
+                
+                print(f"  Win/Tie: Red +{red_win_rp} RP, Blue +{blue_win_rp} RP")
+                print(f"  TOTAL RP: Red = {red_rp_total}, Blue = {blue_rp_total}")
                 
                 past_matches.append({
                     'match_number': match.get('id'),
@@ -518,12 +548,28 @@ def get_event_predictions(event_code: str):
                     'correct_prediction': actual_winner != 'tie' and actual_winner == predicted_winner,
                     'red_rp': red_rp_total,
                     'blue_rp': blue_rp_total,
-                    'red_movement_rp': red_movement,
-                    'blue_movement_rp': blue_movement,
-                    'red_goal_rp': red_goal,
-                    'blue_goal_rp': blue_goal,
-                    'red_pattern_rp': red_pattern,
-                    'blue_pattern_rp': blue_pattern
+                    'red_movement_rp': red_movement_rp,
+                    'blue_movement_rp': blue_movement_rp,
+                    'red_goal_rp': red_goal_rp,
+                    'blue_goal_rp': blue_goal_rp,
+                    'red_pattern_rp': red_pattern_rp,
+                    'blue_pattern_rp': blue_pattern_rp,
+                    'red_win_rp': red_win_rp,
+                    'blue_win_rp': blue_win_rp,
+                    'red_rp_breakdown': {
+                        'movement': red_movement_rp,
+                        'goal': red_goal_rp,
+                        'pattern': red_pattern_rp,
+                        'win': red_win_rp,
+                        'total': red_rp_total
+                    },
+                    'blue_rp_breakdown': {
+                        'movement': blue_movement_rp,
+                        'goal': blue_goal_rp,
+                        'pattern': blue_pattern_rp,
+                        'win': blue_win_rp,
+                        'total': blue_rp_total
+                    }
                 })
             else:
                 # This is an upcoming match - make prediction WITH RP
@@ -617,6 +663,13 @@ def get_event_predictions(event_code: str):
                     'blue_total_rp': blue_total_rp
                 })
         
+        # Print summary of RP calculations
+        print(f"\n=== RP CALCULATION SUMMARY ===")
+        print(f"Total matches analyzed: {played_matches}")
+        total_red_rp = sum(match['red_rp'] for match in past_matches)
+        total_blue_rp = sum(match['blue_rp'] for match in past_matches)
+        print(f"Total RP awarded in event: Red = {total_red_rp}, Blue = {total_blue_rp}")
+        
         # Calculate prediction accuracy for past matches
         correct_predictions = sum(1 for match in past_matches if match['correct_prediction'])
         total_predictable = sum(1 for match in past_matches if match['actual_winner'] != 'tie')
@@ -635,9 +688,18 @@ def get_event_predictions(event_code: str):
             "upcoming_matches": leaderboard_result['upcoming_matches'],
             "total_matches": leaderboard_result['total_matches'],
             "scheduled_matches": scheduled_matches,
-            "prediction_accuracy": round(accuracy, 1)
+            "prediction_accuracy": round(accuracy, 1),
+            "rp_summary": {
+                "total_matches": played_matches,
+                "total_red_rp": total_red_rp,
+                "total_blue_rp": total_blue_rp,
+                "avg_rp_per_match": (total_red_rp + total_blue_rp) / (played_matches * 2) if played_matches > 0 else 0
+            }
         })
     except Exception as e:
+        import traceback
+        print(f"Server error: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/team/<team_number>')
