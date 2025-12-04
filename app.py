@@ -80,15 +80,7 @@ class FTCStatsCalculator:
         teams = set()
         for match in matches:
             # Skip non-qual matches (match numbers > 10000)
-            match_id = match.get('id', 0)
-            if isinstance(match_id, str):
-                try:
-                    match_num = int(match_id)
-                    if match_num > 10000:
-                        continue
-                except:
-                    pass
-            
+            match_id = match.get('id', 0)            
             for team_data in match.get('teams', []):
                 team_num = str(team_data.get('teamNumber'))
                 if team_num:
@@ -132,17 +124,7 @@ class FTCStatsCalculator:
             return {}
         
         teams = set()
-        for match in matches:
-            # Skip non-qual matches (match numbers > 10000)
-            match_id = match.get('id', 0)
-            if isinstance(match_id, str):
-                try:
-                    match_num = int(match_id)
-                    if match_num > 10000:
-                        continue
-                except:
-                    pass
-            
+        for match in matches:            
             for team_data in match.get('teams', []):
                 team_num = str(team_data.get('teamNumber'))
                 if team_num:
@@ -201,18 +183,16 @@ class FTCStatsCalculator:
         
         # Process all matches (but skip non-qual matches)
         for match in matches:
+            # Skip non-qual matches (match numbers > 10000) - ONLY for leaderboard
             match_id = match.get('id', 0)
-            
-            # Skip non-qual matches (match numbers > 10000)
             if isinstance(match_id, str):
                 try:
                     match_num = int(match_id)
                     if match_num > 10000:
-                        continue
+                        continue  # Skip non-qual matches for leaderboard only
                 except:
                     # If can't parse as int, assume it's a qual match
-                    pass
-            
+                    pass                        
             red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
             blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
             
@@ -249,13 +229,13 @@ class FTCStatsCalculator:
                 if red_pattern: red_rp_total += 1
                 if blue_pattern: blue_rp_total += 1
                 
-                # Win/Tie RP (FTC 2025: +2 for win, +1 for tie)
+                # Win/Tie RP (FTC 2025: +3 for win, +1 for tie)
                 if actual_winner == 'red':
-                    red_rp_total += 2
+                    red_rp_total += 3
                     red_win = 1
                     blue_win = 0
                 elif actual_winner == 'blue':
-                    blue_rp_total += 2
+                    blue_rp_total += 3
                     red_win = 0
                     blue_win = 1
                 else:  # tie
@@ -321,11 +301,11 @@ class FTCStatsCalculator:
                 
                 # Add win/tie RP (FTC 2025: +2 for win, +1 for tie)
                 if predicted_winner == 'red':
-                    red_rps['total'] += 2
+                    red_rps['total'] += 3
                     red_rps['win'] = 1
                     blue_rps['win'] = 0
                 elif predicted_winner == 'blue':
-                    blue_rps['total'] += 2
+                    blue_rps['total'] += 3
                     red_rps['win'] = 0
                     blue_rps['win'] = 1
                 else:  # tie
@@ -489,9 +469,9 @@ def get_event_predictions(event_code: str):
                 
                 # Win/Tie RP
                 if actual_winner == 'red':
-                    red_rp_total += 2
+                    red_rp_total += 3
                 elif actual_winner == 'blue':
-                    blue_rp_total += 2
+                    blue_rp_total += 3
                 else:  # tie
                     red_rp_total += 1
                     blue_rp_total += 1
@@ -586,9 +566,9 @@ def get_event_predictions(event_code: str):
                 
                 # Add win/tie RP to totals
                 if predicted_winner == 'red':
-                    red_total_rp += 2
+                    red_total_rp += 3
                 elif predicted_winner == 'blue':
-                    blue_total_rp += 2
+                    blue_total_rp += 3
                 else:  # tie
                     red_total_rp += 1
                     blue_total_rp += 1
