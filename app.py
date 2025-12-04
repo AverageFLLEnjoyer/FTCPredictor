@@ -147,22 +147,40 @@ class FTCStatsCalculator:
                     'goal_avg': round(goal_avg),
                     'pattern_rp': pattern_avg > 50,
                     'pattern_avg': round(pattern_avg),
-                    'movement_prob': round(movement_avg),
+                    'movement_prob': round(movement_avg),  # Add these for compatibility
                     'goal_prob': round(goal_avg),
                     'pattern_prob': round(pattern_avg)
                 }
             else:
-                rp_data[team] = {
-                    'movement_rp': False,
-                    'movement_avg': 0,
-                    'goal_rp': False, 
-                    'goal_avg': 0,
-                    'pattern_rp': False,
-                    'pattern_avg': 0,
-                    'movement_prob': 0,
-                    'goal_prob': 0,
-                    'pattern_prob': 0
-                }
+                # Try to get from different structure if 'avg' doesn't exist
+                if stats and 'movementRp' in stats:
+                    movement_avg = stats.get('movementRp', 0) * 100
+                    goal_avg = stats.get('goalRp', 0) * 100
+                    pattern_avg = stats.get('patternRp', 0) * 100
+                    
+                    rp_data[team] = {
+                        'movement_rp': movement_avg > 50,
+                        'movement_avg': round(movement_avg),
+                        'goal_rp': goal_avg > 50,
+                        'goal_avg': round(goal_avg),
+                        'pattern_rp': pattern_avg > 50,
+                        'pattern_avg': round(pattern_avg),
+                        'movement_prob': round(movement_avg),
+                        'goal_prob': round(goal_avg),
+                        'pattern_prob': round(pattern_avg)
+                    }
+                else:
+                    rp_data[team] = {
+                        'movement_rp': False,
+                        'movement_avg': 0,
+                        'goal_rp': False, 
+                        'goal_avg': 0,
+                        'pattern_rp': False,
+                        'pattern_avg': 0,
+                        'movement_prob': 0,
+                        'goal_prob': 0,
+                        'pattern_prob': 0
+                    }
         
         return rp_data
 
