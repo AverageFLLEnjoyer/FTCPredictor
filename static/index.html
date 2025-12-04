@@ -5,334 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FTC Statistics Hub</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        header {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-        }
-        nav {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        .tab-button {
-            padding: 10px 20px;
-            border: none;
-            background: #ecf0f1;
-            cursor: pointer;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-        .tab-button.active {
-            background: #3498db;
-            color: white;
-        }
-        .tab-content {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            align-items: center;
-        }
-        input {
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            flex: 1;
-            font-size: 16px;
-        }
-        button {
-            padding: 10px 20px;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover {
-            background: #2980b9;
-        }
-        button:disabled {
-            background: #bdc3c7;
-            cursor: not-allowed;
-        }
-        .results {
-            margin-top: 20px;
-        }
-        .opr-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 10px;
-            margin: 15px 0;
-        }
-        .opr-item {
-            background: #ecf0f1;
-            padding: 10px;
-            border-radius: 5px;
-            text-align: center;
-        }
-        .prediction {
-            background: #f8f9fa;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 5px;
-            border-left: 4px solid #3498db;
-        }
-        .past-match {
-            background: #f8f9fa;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 5px;
-            border-left: 4px solid #95a5a6;
-        }
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #7f8c8d;
-        }
-        .error {
-            background: #ffeaa7;
-            padding: 10px;
-            border-radius: 5px;
-            border-left: 4px solid #fdcb6e;
-        }
-        .rp-predictions {
-            display: flex;
-            gap: 20px;
-            margin: 10px 0;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 5px;
-        }
-        .alliance-rp {
-            flex: 1;
-        }
-        .rp-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 5px 0;
-            padding: 5px;
-            background: white;
-            border-radius: 3px;
-        }
-        .rp-yes { color: #27ae60; }
-        .rp-no { color: #e74c3c; }
-        .confidence-bar {
-            background: #ecf0f1;
-            border-radius: 10px;
-            height: 8px;
-            margin: 5px 0;
-            overflow: hidden;
-        }
-        .confidence-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #e74c3c, #f39c12, #27ae60);
-            border-radius: 10px;
-        }
-        .winner-confidence {
-            font-size: 14px;
-            color: #7f8c8d;
-            margin-top: 5px;
-        }
+        /* [Keep all your existing CSS styles] */
+        /* I'm just showing the new/updated styles below */
         
-        /* OPR Source Toggle */
-        .opr-toggle {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 5px;
-        }
-        .toggle-option {
-            padding: 8px 16px;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            background: white;
-        }
-        .toggle-option.active {
-            background: #3498db;
-            color: white;
-            border-color: #3498db;
-        }
-        
-        /* Leaderboard Styles */
-        .leaderboard {
-            margin-top: 30px;
-        }
-        .leaderboard-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        .leaderboard-table th {
-            background: #3498db;
-            color: white;
-            padding: 12px;
-            text-align: left;
-            cursor: pointer;
-        }
-        .leaderboard-table th:hover {
-            background: #2980b9;
-        }
-        .leaderboard-table td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #eee;
-        }
-        .leaderboard-table tr:hover {
-            background: #f8f9fa;
-        }
-        .leaderboard-table tr:nth-child(even) {
-            background: #f8f9fa;
-        }
-        .rank-cell {
-            font-weight: bold;
-            color: #2c3e50;
-            width: 50px;
-        }
-        .team-cell {
-            font-weight: bold;
-        }
-        .rp-cell {
-            text-align: center;
-        }
-        .win-rate-cell {
-            text-align: center;
-        }
-        .good-stat { color: #27ae60; font-weight: bold; }
-        .avg-stat { color: #f39c12; }
-        .bad-stat { color: #e74c3c; }
-        
-        /* Tooltip for highest OPR info */
-        .highest-opr-info {
+        /* Status badges */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
             font-size: 12px;
-            color: #7f8c8d;
-            margin-top: 3px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status-completed {
+            background: #27ae60;
+            color: white;
+        }
+        .status-in-progress {
+            background: #f39c12;
+            color: white;
+        }
+        .status-not-started {
+            background: #3498db;
+            color: white;
         }
         
-        /* Accuracy display */
-        .accuracy-display {
-            background: #ecf0f1;
+        /* Prediction indicator */
+        .prediction-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .predicted {
+            background: #f39c12;
+        }
+        .actual {
+            background: #27ae60;
+        }
+        
+        /* Leaderboard legend */
+        .leaderboard-legend {
+            background: #f8f9fa;
             padding: 10px;
             border-radius: 5px;
-            margin: 15px 0;
-            text-align: center;
-            font-weight: bold;
-        }
-        .accuracy-good { color: #27ae60; }
-        .accuracy-avg { color: #f39c12; }
-        .accuracy-bad { color: #e74c3c; }
-        
-        /* Section headers */
-        .section-header {
-            margin-top: 30px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #3498db;
-            color: #2c3e50;
+            margin: 10px 0;
+            font-size: 14px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>🏆 FTC Statistics Hub</h1>
-        <p>Match predictions and team analytics powered by OPR</p>
-        <nav>
-            <button class="tab-button active" onclick="showTab('predictions')">Match Predictions</button>
-            <button class="tab-button" onclick="showTab('team')">Team Lookup</button>
-        </nav>
-    </header>
-
-    <main>
-        <!-- Predictions Tab -->
-        <div id="predictions-tab" class="tab-content">
-            <h2>🔮 Match Predictions</h2>
-            
-            <!-- OPR Source Toggle -->
-            <div class="opr-toggle">
-                <span>OPR Source:</span>
-                <div class="toggle-option active" id="toggle-current" onclick="setOprSource('current')">
-                    Current Event OPR
-                </div>
-                <div class="toggle-option" id="toggle-highest" onclick="setOprSource('highest')">
-                    Highest Season OPR
-                </div>
-            </div>
-            
-            <div class="input-group">
-                <input type="text" id="event-code" placeholder="Enter event code (e.g., AUBRQ1)" onkeyup="if(event.key==='Enter') getPredictions()">
-                <button onclick="getPredictions()" id="predict-btn">Get Predictions</button>
-            </div>
-            
-            <div id="predictions-results"></div>
-        </div>
-
-        <!-- Team Tab -->
-        <div id="team-tab" class="tab-content" style="display: none;">
-            <h2>👥 Team Lookup</h2>
-            <div class="input-group">
-                <input type="text" id="team-number" placeholder="Enter team number (e.g., 14380)" onkeyup="if(event.key==='Enter') getTeamData()">
-                <button onclick="getTeamData()" id="team-btn">Get Team Data</button>
-            </div>
-            <div id="team-results"></div>
-        </div>
-    </main>
-
+    <!-- [Keep your existing HTML structure] -->
+    <!-- Just updating the JavaScript part below -->
+    
     <script>
-        // Global variables
-        let currentOprSource = 'current'; // 'current' or 'highest'
+        // [Keep all existing functions like showTab, setOprSource, getTeamData]
         
-        function showTab(tabName) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.style.display = 'none';
-            });
-            // Remove active from all buttons
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            // Show selected tab
-            document.getElementById(tabName + '-tab').style.display = 'block';
-            event.target.classList.add('active');
-        }
-        
-        function setOprSource(source) {
-            currentOprSource = source;
-            
-            // Update toggle UI
-            document.querySelectorAll('.toggle-option').forEach(option => {
-                option.classList.remove('active');
-            });
-            
-            if (source === 'current') {
-                document.getElementById('toggle-current').classList.add('active');
-            } else {
-                document.getElementById('toggle-highest').classList.add('active');
-            }
-        }
-
         async function getPredictions() {
             const eventCode = document.getElementById('event-code').value.trim().toUpperCase();
             const btn = document.getElementById('predict-btn');
@@ -369,10 +101,14 @@
             
             let html = '';
             
-            // Event summary
+            // Event summary with status
+            const statusClass = `status-${data.event_status.replace('_', '-')}`;
+            const statusText = data.event_status === 'completed' ? 'Completed' : 
+                             data.event_status === 'in_progress' ? 'In Progress' : 'Not Started';
+            
             html += `<div class="accuracy-display">
-                <h3>Event: ${data.event_code}</h3>
-                <p>Total Matches: ${data.total_matches} | Played: ${data.played_matches} | Scheduled: ${data.scheduled_matches}</p>
+                <h3>Event: ${data.event_code} <span class="status-badge ${statusClass}">${statusText}</span></h3>
+                <p>Total Matches: ${data.total_matches} | Played: ${data.played_matches} | Upcoming: ${data.upcoming_matches}</p>
                 <p>Using: <strong>${data.opr_source === 'highest_season' ? 'Highest Season OPR' : 'Current Event OPR'}</strong></p>
             </div>`;
             
@@ -409,21 +145,52 @@
                 html += `<p>No OPR data available</p>`;
             }
             
-            // Leaderboard section
+            // PERMANENT LEADERBOARD
             if (data.leaderboard && data.leaderboard.length > 0) {
+                const hasPredictions = data.leaderboard.some(team => team.has_predictions);
+                const isAllPredicted = data.leaderboard.every(team => team.has_predictions);
+                const isAllActual = data.leaderboard.every(team => !team.has_predictions);
+                
+                let leaderboardTitle = "🏆 Event Leaderboard";
+                let leaderboardSubtitle = "";
+                
+                if (data.event_status === 'completed') {
+                    leaderboardTitle = "🏆 Final Standings";
+                    leaderboardSubtitle = "Based on actual match results";
+                } else if (data.event_status === 'in_progress') {
+                    leaderboardTitle = "🏆 Current Standings";
+                    leaderboardSubtitle = "Actual results + predicted upcoming matches";
+                } else { // not_started
+                    leaderboardTitle = "🏆 Predicted Standings";
+                    leaderboardSubtitle = "Based on match predictions";
+                }
+                
                 html += `
-                    <h3 class="section-header">🏆 Predicted Leaderboard</h3>
-                    <p>Based on predicted performance in upcoming matches</p>
+                    <h3 class="section-header">${leaderboardTitle}</h3>
+                    <p>${leaderboardSubtitle}</p>
+                `;
+                
+                // Show legend if mixed results
+                if (hasPredictions && !isAllPredicted && !isAllActual) {
+                    html += `
+                        <div class="leaderboard-legend">
+                            <div><span class="prediction-indicator actual"></span> Actual Results</div>
+                            <div><span class="prediction-indicator predicted"></span> Predicted Results</div>
+                        </div>
+                    `;
+                }
+                
+                html += `
                     <table class="leaderboard-table" id="leaderboard-table">
                         <thead>
                             <tr>
                                 <th onclick="sortLeaderboard('rank')">Rank</th>
                                 <th onclick="sortLeaderboard('team')">Team</th>
-                                <th onclick="sortLeaderboard('avg_rp')" title="Average Predicted RP per Match">Avg RP</th>
-                                <th onclick="sortLeaderboard('total_rp')" title="Total Predicted RP">Total RP</th>
-                                <th onclick="sortLeaderboard('matches')" title="Number of Predicted Matches">Matches</th>
-                                <th onclick="sortLeaderboard('win_rate')" title="Predicted Win Rate">Win Rate</th>
-                                <th onclick="sortLeaderboard('median_rp')" title="Median Predicted RP">Median RP</th>
+                                <th onclick="sortLeaderboard('total_rp')" title="Total Ranking Points">Total RP</th>
+                                <th onclick="sortLeaderboard('avg_rp')" title="Average RP per Match">Avg RP</th>
+                                <th onclick="sortLeaderboard('matches')" title="Total Matches Played/Predicted">Matches</th>
+                                <th onclick="sortLeaderboard('win_rate')" title="Win Rate">Win Rate</th>
+                                <th onclick="sortLeaderboard('median_rp')" title="Median RP">Median RP</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -431,15 +198,20 @@
                 
                 data.leaderboard.forEach((team, index) => {
                     const winRateClass = team.win_rate >= 60 ? 'good-stat' : team.win_rate >= 40 ? 'avg-stat' : 'bad-stat';
-                    const avgRpClass = team.avg_predicted_rp >= 3 ? 'good-stat' : team.avg_predicted_rp >= 2 ? 'avg-stat' : 'bad-stat';
+                    const avgRpClass = team.avg_rp >= 3 ? 'good-stat' : team.avg_rp >= 2 ? 'avg-stat' : 'bad-stat';
+                    const isPredicted = team.has_predictions;
                     
                     html += `
                         <tr>
                             <td class="rank-cell">${index + 1}</td>
-                            <td class="team-cell">Team ${team.team_number}</td>
-                            <td class="rp-cell ${avgRpClass}">${team.avg_predicted_rp.toFixed(2)}</td>
-                            <td class="rp-cell">${team.total_predicted_rp}</td>
-                            <td class="rp-cell">${team.predicted_matches}</td>
+                            <td class="team-cell">
+                                ${isPredicted ? '<span class="prediction-indicator predicted"></span>' : 
+                                  data.event_status === 'in_progress' ? '<span class="prediction-indicator actual"></span>' : ''}
+                                Team ${team.team_number}
+                            </td>
+                            <td class="rp-cell ${avgRpClass}">${team.total_rp}</td>
+                            <td class="rp-cell">${team.avg_rp.toFixed(2)}</td>
+                            <td class="rp-cell">${team.total_matches}</td>
                             <td class="win-rate-cell ${winRateClass}">${team.win_rate}%</td>
                             <td class="rp-cell">${team.median_rp}</td>
                         </tr>
@@ -452,7 +224,7 @@
                 `;
             }
             
-            // Past Matches section
+            // Past Matches section (only if there are past matches)
             if (data.past_matches && data.past_matches.length > 0) {
                 html += `<h3 class="section-header">📜 Past Match Results (${data.past_matches.length} matches)</h3>`;
                 data.past_matches.forEach(match => {
@@ -493,7 +265,7 @@
                 });
             }
             
-            // Upcoming Predictions section
+            // Upcoming Predictions section (only if there are upcoming matches)
             if (data.predictions && data.predictions.length > 0) {
                 html += `<h3 class="section-header">🎯 Upcoming Match Predictions (${data.predictions.length} matches)</h3>`;
                 data.predictions.forEach(pred => {
@@ -530,131 +302,15 @@
                         </div>
                     `;
                 });
-            } else if (data.scheduled_matches === 0) {
-                html += `<p>No upcoming matches scheduled</p>`;
+            } else if (data.upcoming_matches === 0 && data.event_status !== 'not_started') {
+                html += `<p>No upcoming matches - event is ${data.event_status === 'completed' ? 'complete' : 'in progress'}</p>`;
             }
             
             results.innerHTML = html;
         }
 
-        function displayRPPredictions(rpData) {
-            // Check if RP data exists
-            if (!rpData.movement_rp && !rpData.goal_rp && !rpData.pattern_rp) {
-                return `<div style="margin-top: 8px; color: #7f8c8d; font-style: italic;">RP data loading...</div>`;
-            }
-            
-            return `
-                <div style="margin-top: 8px;">
-                    <div class="rp-item">
-                        <span>🚚 Movement RP:</span>
-                        <span class="${rpData.movement_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.movement_rp ? '✅' : '❌'} ${rpData.movement_avg || 0}%
-                        </span>
-                    </div>
-                    <div class="rp-item">
-                        <span>🎯 Goal RP:</span>
-                        <span class="${rpData.goal_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.goal_rp ? '✅' : '❌'} ${rpData.goal_avg || 0}%
-                        </span>
-                    </div>
-                    <div class="rp-item">
-                        <span>📊 Pattern RP:</span>
-                        <span class="${rpData.pattern_rp ? 'rp-yes' : 'rp-no'}">
-                            ${rpData.pattern_rp ? '✅' : '❌'} ${rpData.pattern_avg || 0}%
-                        </span>
-                    </div>
-                </div>
-            `;
-        }
-
-        async function getTeamData() {
-            const teamNumber = document.getElementById('team-number').value.trim();
-            const btn = document.getElementById('team-btn');
-            const results = document.getElementById('team-results');
-            
-            if (!teamNumber) {
-                results.innerHTML = '<div class="error">Please enter a team number</div>';
-                return;
-            }
-            
-            btn.disabled = true;
-            btn.textContent = 'Loading...';
-            results.innerHTML = '<div class="loading">📡 Fetching team data...</div>';
-            
-            try {
-                const response = await fetch(`/api/team/${teamNumber}`);
-                const data = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(data.error || 'Team not found');
-                }
-                
-                results.innerHTML = `
-                    <h3>Team ${data.team_info.number}</h3>
-                    <p><strong>Name:</strong> ${data.team_info.name || 'N/A'}</p>
-                    <p><strong>Location:</strong> ${data.team_info.city || 'N/A'}, ${data.team_info.stateProv || 'N/A'} ${data.team_info.country || ''}</p>
-                    <p><strong>Rookie Year:</strong> ${data.team_info.rookieYear || 'N/A'}</p>
-                    <p>${data.message}</p>
-                `;
-            } catch (error) {
-                results.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Get Team Data';
-            }
-        }
-        
-        // Leaderboard sorting function
-        function sortLeaderboard(column) {
-            const table = document.getElementById('leaderboard-table');
-            if (!table) return;
-            
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            
-            rows.sort((a, b) => {
-                const aCells = a.querySelectorAll('td');
-                const bCells = b.querySelectorAll('td');
-                
-                let aValue, bValue;
-                
-                switch(column) {
-                    case 'rank':
-                        aValue = parseInt(aCells[0].textContent);
-                        bValue = parseInt(bCells[0].textContent);
-                        return aValue - bValue;
-                    case 'team':
-                        aValue = parseInt(aCells[1].textContent.replace('Team ', ''));
-                        bValue = parseInt(bCells[1].textContent.replace('Team ', ''));
-                        return aValue - bValue;
-                    case 'avg_rp':
-                        aValue = parseFloat(aCells[2].textContent);
-                        bValue = parseFloat(bCells[2].textContent);
-                        return bValue - aValue; // Descending
-                    case 'total_rp':
-                        aValue = parseInt(aCells[3].textContent);
-                        bValue = parseInt(bCells[3].textContent);
-                        return bValue - aValue; // Descending
-                    case 'matches':
-                        aValue = parseInt(aCells[4].textContent);
-                        bValue = parseInt(bCells[4].textContent);
-                        return bValue - aValue; // Descending
-                    case 'win_rate':
-                        aValue = parseFloat(aCells[5].textContent.replace('%', ''));
-                        bValue = parseFloat(bCells[5].textContent.replace('%', ''));
-                        return bValue - aValue; // Descending
-                    case 'median_rp':
-                        aValue = parseInt(aCells[6].textContent);
-                        bValue = parseInt(bCells[6].textContent);
-                        return bValue - aValue; // Descending
-                    default:
-                        return 0;
-                }
-            });
-            
-            // Reappend sorted rows
-            rows.forEach(row => tbody.appendChild(row));
-        }
+        // [Keep all other functions the same]
+        // Only displayRPPredictions, getTeamData, sortLeaderboard remain unchanged
     </script>
 </body>
 </html>
