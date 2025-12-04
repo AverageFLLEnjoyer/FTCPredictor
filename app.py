@@ -159,25 +159,22 @@ class FTCStatsCalculator:
         return rp_data
 
     def calculate_leaderboard(self, event_code: str, opr_data: dict, rp_data: dict, matches: list):
-        """Calculate leaderboard based on predicted match outcomes"""
+        """Calculate leaderboard based on event status"""
         teams = {}
         
         # Initialize team data structure
         for team in opr_data.keys():
             teams[team] = {
                 'team_number': team,
-                'total_predicted_rp': 0,
-                'total_predicted_wins': 0,
-                'total_predicted_matches': 0,
-                'predicted_scores': []
+                'total_rp': 0,
+                'total_wins': 0,
+                'total_matches': 0,
+                'scores': [],
+                'is_predicted': False  # Track if this is actual or predicted
             }
         
-        # Process only upcoming matches for predictions
+        # Process all matches
         for match in matches:
-            # Skip already played matches for leaderboard predictions
-            if match.get('scores') and match['scores'].get('red') and match['scores'].get('blue'):
-                continue
-                
             red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
             blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
             
@@ -185,96 +182,176 @@ class FTCStatsCalculator:
             if len(red_teams) != 2 or len(blue_teams) != 2:
                 continue
             
-            # Calculate alliance OPRs
-            red_opr = sum(opr_data.get(team, 0) for team in red_teams)
-            blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
-            
-            # Predict winner
-            predicted_winner = 'red' if red_opr > blue_opr else 'blue' if blue_opr < red_opr else 'tie'
-            
-            # Calculate predicted RPs for each alliance
-            def calculate_alliance_rps(teams_list):
-                if len(teams_list) != 2:
-                    return {'movement': 0, 'goal': 0, 'pattern': 0, 'total': 0}
+            # Check if match has been played
+            if match.get('scores') and match['scores'].get('red') and match['scores'].get('blue'):
+                # ACTUAL MATCH RESULTS
+                red_score = match['scores']['red'].get('totalPoints', 0)
+                blue_score = match['scores']['blue'].get('totalPoints', 0)
+                actual_winner = 'red' if red_score > blue_score else 'blue' if blue_score > red_score else 'tie'
                 
-                team1_rp = rp_data.get(teams_list[0], {})
-                team2_rp = rp_data.get(teams_list[1], {})
+                # Calculate actual RPs from scores
+                red_rp_total = 0
+                blue_rp_total = 0
                 
-                movement_avg = (team1_rp.get('movement_avg', 0) + team2_rp.get('movement_avg', 0)) / 2
-                goal_avg = (team1_rp.get('goal_avg', 0) + team2_rp.get('goal_avg', 0)) / 2
-                pattern_avg = (team1_rp.get('pattern_avg', 0) + team2_rp.get('pattern_avg', 0)) / 2
+                # Movement RP (from scores)
+                red_movement = match['scores']['red'].get('movementBonus', False)
+                blue_movement = match['scores']['blue'].get('movementBonus', False)
+                if red_movement: red_rp_total += 1
+                if blue_movement: blue_rp_total += 1
                 
-                # Expected RP = probability * 1 RP point (threshold at 50%)
-                movement_rp = 1 if movement_avg > 50 else 0
-                goal_rp = 1 if goal_avg > 50 else 0
-                pattern_rp = 1 if pattern_avg > 50 else 0
+                # Goal RP (from scores)
+                red_goal = match['scores']['red'].get('goalBonus', False)
+                blue_goal = match['scores']['blue'].get('goalBonus', False)
+                if red_goal: red_rp_total += 1
+                if blue_goal: blue_rp_total += 1
                 
-                total_rp = movement_rp + goal_rp + pattern_rp
+                # Pattern RP (from scores)
+                red_pattern = match['scores']['red'].get('patternBonus', False)
+                blue_pattern = match['scores']['blue'].get('patternBonus', False)
+                if red_pattern: red_rp_total += 1
+                if blue_pattern: blue_rp_total += 1
                 
-                return {
-                    'movement': movement_rp,
-                    'goal': goal_rp,
-                    'pattern': pattern_rp,
-                    'total': total_rp
-                }
-            
-            red_rps = calculate_alliance_rps(red_teams)
-            blue_rps = calculate_alliance_rps(blue_teams)
-            
-            # Add win RP (2 points for win, 0 for loss, 1 for tie)
-            if predicted_winner == 'red':
-                red_rps['total'] += 2
-                red_rps['win'] = 1
-                blue_rps['win'] = 0
-            elif predicted_winner == 'blue':
-                blue_rps['total'] += 2
-                red_rps['win'] = 0
-                blue_rps['win'] = 1
-            else:  # tie
-                red_rps['total'] += 1
-                blue_rps['total'] += 1
-                red_rps['win'] = 0.5
-                blue_rps['win'] = 0.5
-            
-            # Update team stats
-            for team in red_teams:
-                if team in teams:
-                    teams[team]['total_predicted_rp'] += red_rps['total']
-                    teams[team]['total_predicted_wins'] += red_rps['win']
-                    teams[team]['total_predicted_matches'] += 1
-                    teams[team]['predicted_scores'].append(red_rps['total'])
-            
-            for team in blue_teams:
-                if team in teams:
-                    teams[team]['total_predicted_rp'] += blue_rps['total']
-                    teams[team]['total_predicted_wins'] += blue_rps['win']
-                    teams[team]['total_predicted_matches'] += 1
-                    teams[team]['predicted_scores'].append(blue_rps['total'])
+                # Win RP
+                if actual_winner == 'red':
+                    red_rp_total += 2
+                    red_win = 1
+                    blue_win = 0
+                elif actual_winner == 'blue':
+                    blue_rp_total += 2
+                    red_win = 0
+                    blue_win = 1
+                else:  # tie
+                    red_rp_total += 1
+                    blue_rp_total += 1
+                    red_win = 0.5
+                    blue_win = 0.5
+                
+                # Update team stats (ACTUAL)
+                for team in red_teams:
+                    if team in teams:
+                        teams[team]['total_rp'] += red_rp_total
+                        teams[team]['total_wins'] += red_win
+                        teams[team]['total_matches'] += 1
+                        teams[team]['scores'].append(red_rp_total)
+                
+                for team in blue_teams:
+                    if team in teams:
+                        teams[team]['total_rp'] += blue_rp_total
+                        teams[team]['total_wins'] += blue_win
+                        teams[team]['total_matches'] += 1
+                        teams[team]['scores'].append(blue_rp_total)
+                        
+            else:
+                # PREDICTED MATCH RESULTS
+                red_opr = sum(opr_data.get(team, 0) for team in red_teams)
+                blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
+                
+                # Predict winner
+                predicted_winner = 'red' if red_opr > blue_opr else 'blue' if blue_opr < red_opr else 'tie'
+                
+                # Calculate predicted RPs for each alliance
+                def calculate_alliance_rps(teams_list):
+                    if len(teams_list) != 2:
+                        return {'movement': 0, 'goal': 0, 'pattern': 0, 'total': 0}
+                    
+                    team1_rp = rp_data.get(teams_list[0], {})
+                    team2_rp = rp_data.get(teams_list[1], {})
+                    
+                    movement_avg = (team1_rp.get('movement_avg', 0) + team2_rp.get('movement_avg', 0)) / 2
+                    goal_avg = (team1_rp.get('goal_avg', 0) + team2_rp.get('goal_avg', 0)) / 2
+                    pattern_avg = (team1_rp.get('pattern_avg', 0) + team2_rp.get('pattern_avg', 0)) / 2
+                    
+                    # Expected RP = probability * 1 RP point (threshold at 50%)
+                    movement_rp = 1 if movement_avg > 50 else 0
+                    goal_rp = 1 if goal_avg > 50 else 0
+                    pattern_rp = 1 if pattern_avg > 50 else 0
+                    
+                    total_rp = movement_rp + goal_rp + pattern_rp
+                    
+                    return {
+                        'movement': movement_rp,
+                        'goal': goal_rp,
+                        'pattern': pattern_rp,
+                        'total': total_rp
+                    }
+                
+                red_rps = calculate_alliance_rps(red_teams)
+                blue_rps = calculate_alliance_rps(blue_teams)
+                
+                # Add win RP (2 points for win, 0 for loss, 1 for tie)
+                if predicted_winner == 'red':
+                    red_rps['total'] += 2
+                    red_rps['win'] = 1
+                    blue_rps['win'] = 0
+                elif predicted_winner == 'blue':
+                    blue_rps['total'] += 2
+                    red_rps['win'] = 0
+                    blue_rps['win'] = 1
+                else:  # tie
+                    red_rps['total'] += 1
+                    blue_rps['total'] += 1
+                    red_rps['win'] = 0.5
+                    blue_rps['win'] = 0.5
+                
+                # Update team stats (PREDICTED)
+                for team in red_teams:
+                    if team in teams:
+                        teams[team]['total_rp'] += red_rps['total']
+                        teams[team]['total_wins'] += red_rps['win']
+                        teams[team]['total_matches'] += 1
+                        teams[team]['scores'].append(red_rps['total'])
+                        teams[team]['is_predicted'] = True
+                
+                for team in blue_teams:
+                    if team in teams:
+                        teams[team]['total_rp'] += blue_rps['total']
+                        teams[team]['total_wins'] += blue_rps['win']
+                        teams[team]['total_matches'] += 1
+                        teams[team]['scores'].append(blue_rps['total'])
+                        teams[team]['is_predicted'] = True
         
-        # Calculate averages
+        # Calculate averages and prepare leaderboard
         leaderboard = []
+        total_played_matches = sum(1 for match in matches if match.get('scores'))
+        total_upcoming_matches = len(matches) - total_played_matches
+        
         for team_num, team_data in teams.items():
-            if team_data['total_predicted_matches'] > 0:
-                avg_rp = team_data['total_predicted_rp'] / team_data['total_predicted_matches']
-                win_rate = (team_data['total_predicted_wins'] / team_data['total_predicted_matches']) * 100
+            if team_data['total_matches'] > 0:
+                avg_rp = team_data['total_rp'] / team_data['total_matches']
+                win_rate = (team_data['total_wins'] / team_data['total_matches']) * 100
                 
-                # Sort predicted scores to find median
-                sorted_scores = sorted(team_data['predicted_scores'])
+                # Sort scores to find median
+                sorted_scores = sorted(team_data['scores'])
                 median_rp = sorted_scores[len(sorted_scores) // 2] if sorted_scores else 0
                 
                 leaderboard.append({
                     'team_number': team_num,
-                    'avg_predicted_rp': round(avg_rp, 2),
-                    'total_predicted_rp': team_data['total_predicted_rp'],
-                    'predicted_matches': team_data['total_predicted_matches'],
+                    'avg_rp': round(avg_rp, 2),
+                    'total_rp': team_data['total_rp'],
+                    'total_matches': team_data['total_matches'],
                     'win_rate': round(win_rate, 1),
-                    'median_rp': median_rp
+                    'median_rp': median_rp,
+                    'has_predictions': team_data['is_predicted']
                 })
         
-        # Sort by average predicted RP (descending)
-        leaderboard.sort(key=lambda x: x['avg_predicted_rp'], reverse=True)
+        # Determine event status
+        event_status = "completed"
+        if total_upcoming_matches > 0:
+            if total_played_matches > 0:
+                event_status = "in_progress"
+            else:
+                event_status = "not_started"
         
-        return leaderboard
+        # Sort by total RP (descending), then by average RP
+        leaderboard.sort(key=lambda x: (x['total_rp'], x['avg_rp']), reverse=True)
+        
+        return {
+            'leaderboard': leaderboard,
+            'event_status': event_status,
+            'played_matches': total_played_matches,
+            'upcoming_matches': total_upcoming_matches,
+            'total_matches': len(matches)
+        }
 
 calculator = FTCStatsCalculator()
 
@@ -305,14 +382,14 @@ def get_event_predictions(event_code: str):
         print(f"Found {len(matches)} matches for event {event_code}")
         print(f"Using OPR source: {'Highest Season OPR' if use_highest_season_opr else 'Current Event OPR'}")
         
-        # Get OPR data - RESTORE ORIGINAL STRUCTURE
+        # Get OPR data
         opr_data, highest_opr_info = calculator.calculate_opr(event_code, use_highest_season_opr)
         
         # Get RP data
         rp_data = calculator.calculate_rp_simple(event_code)
         
-        # Calculate leaderboard (for upcoming matches only)
-        leaderboard = calculator.calculate_leaderboard(event_code, opr_data, rp_data, matches)
+        # Calculate comprehensive leaderboard
+        leaderboard_result = calculator.calculate_leaderboard(event_code, opr_data, rp_data, matches)
         
         predictions = []
         past_matches = []
@@ -323,7 +400,7 @@ def get_event_predictions(event_code: str):
             red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
             blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
             
-            # Check if match has been played (has scores) - EXACTLY AS BEFORE
+            # Check if match has been played (has scores)
             if match.get('scores') and match['scores'].get('red') and match['scores'].get('blue'):
                 played_matches += 1
                 red_score = match['scores']['red'].get('totalPoints', 0)
@@ -405,15 +482,17 @@ def get_event_predictions(event_code: str):
         
         return jsonify({
             "event_code": event_code,
-            "opr_data": opr_data,  # EXACTLY AS BEFORE
+            "opr_data": opr_data,
             "opr_source": "highest_season" if use_highest_season_opr else "current_event",
             "highest_opr_info": highest_opr_info if use_highest_season_opr else {},
             "predictions": predictions,
             "past_matches": past_matches,
-            "leaderboard": leaderboard,
+            "leaderboard": leaderboard_result['leaderboard'],
+            "event_status": leaderboard_result['event_status'],
+            "played_matches": leaderboard_result['played_matches'],
+            "upcoming_matches": leaderboard_result['upcoming_matches'],
+            "total_matches": leaderboard_result['total_matches'],
             "scheduled_matches": scheduled_matches,
-            "played_matches": played_matches,
-            "total_matches": len(matches),
             "prediction_accuracy": round(accuracy, 1)
         })
     except Exception as e:
