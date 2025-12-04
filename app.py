@@ -44,7 +44,34 @@ class FTCStatsCalculator:
         
         return {}
 
-    def calculate_opr(self, event_code: str):
+    def get_team_season_stats(self, team_number: str):
+        """Get all events for a team in current season to find highest OPR"""
+        team_events = self.make_api_call(f"teams/{team_number}/events/{CURRENT_SEASON}")
+        if not team_events:
+            return None
+        
+        highest_opr = 0
+        highest_event = None
+        
+        # Handle both list and dict responses
+        events_list = team_events if isinstance(team_events, list) else [team_events]
+        
+        for event in events_list:
+            stats = event.get('stats', {})
+            if stats and 'opr' in stats:
+                opr_components = stats['opr']
+                total_opr = opr_components.get('totalPointsNp', 0)
+                if total_opr > highest_opr:
+                    highest_opr = total_opr
+                    highest_event = event.get('eventCode', 'Unknown')
+        
+        return {
+            'highest_opr': highest_opr,
+            'event_achieved': highest_event,
+            'total_events': len(events_list)
+        }
+
+    def calculate_opr(self, event_code: str, use_highest_season_opr: bool = False):
         """Get OPR data for all teams in the event"""
         matches = self.get_event_matches(event_code)
         if not matches:
@@ -58,16 +85,38 @@ class FTCStatsCalculator:
                     teams.add(team_num)
         
         opr_data = {}
-        for team in teams:
-            stats = self.get_team_event_stats(team, event_code)
-            if stats and 'opr' in stats:
-                opr_components = stats['opr']
-                total_opr = opr_components.get('totalPointsNp', 0)
-                opr_data[team] = total_opr
-            else:
-                opr_data[team] = 0
+        highest_opr_data = {}
         
-        return opr_data
+        for team in teams:
+            if use_highest_season_opr:
+                # Get highest OPR from season
+                season_stats = self.get_team_season_stats(team)
+                if season_stats:
+                    opr_data[team] = season_stats['highest_opr']
+                    highest_opr_data[team] = {
+                        'opr': season_stats['highest_opr'],
+                        'event_achieved': season_stats['event_achieved']
+                    }
+                else:
+                    opr_data[team] = 0
+                    highest_opr_data[team] = {
+                        'opr': 0,
+                        'event_achieved': 'N/A'
+                    }
+            else:
+                # Use current event OPR (existing logic)
+                stats = self.get_team_event_stats(team, event_code)
+                if stats and 'opr' in stats:
+                    opr_components = stats['opr']
+                    total_opr = opr_components.get('totalPointsNp', 0)
+                    opr_data[team] = total_opr
+                else:
+                    opr_data[team] = 0
+        
+        return {
+            'opr_values': opr_data,
+            'highest_opr_info': highest_opr_data if use_highest_season_opr else {}
+        }
 
     def calculate_rp_simple(self, event_code: str):
         """Simple RP calculation using team event stats"""
@@ -112,6 +161,122 @@ class FTCStatsCalculator:
         
         return rp_data
 
+    def calculate_leaderboard(self, event_code: str, opr_data: dict, rp_data: dict, matches: list, use_highest_season_opr: bool = False):
+        """Calculate leaderboard based on predicted match outcomes"""
+        teams = {}
+        
+        # Initialize team data structure
+        for team in opr_data.keys():
+            teams[team] = {
+                'team_number': team,
+                'total_predicted_rp': 0,
+                'total_predicted_wins': 0,
+                'total_predicted_matches': 0,
+                'predicted_scores': [],
+                'highest_opr_info': opr_data.get('highest_opr_info', {}).get(team, {}) if use_highest_season_opr else {}
+            }
+        
+        # Process all matches (both played and upcoming)
+        for match in matches:
+            red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
+            blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
+            
+            # Skip if not a proper match (should have 2 teams per alliance)
+            if len(red_teams) != 2 or len(blue_teams) != 2:
+                continue
+            
+            # Calculate alliance OPRs
+            red_opr = sum(opr_data['opr_values'].get(team, 0) for team in red_teams)
+            blue_opr = sum(opr_data['opr_values'].get(team, 0) for team in blue_teams)
+            
+            # Predict winner
+            predicted_winner = 'red' if red_opr > blue_opr else 'blue' if blue_opr < red_opr else 'tie'
+            
+            # Calculate predicted RPs for each alliance
+            def calculate_alliance_rps(teams_list):
+                if len(teams_list) != 2:
+                    return {'movement': 0, 'goal': 0, 'pattern': 0, 'total': 0}
+                
+                team1_rp = rp_data.get(teams_list[0], {})
+                team2_rp = rp_data.get(teams_list[1], {})
+                
+                movement_prob = (team1_rp.get('movement_avg', 0) + team2_rp.get('movement_avg', 0)) / 200  # Convert to probability
+                goal_prob = (team1_rp.get('goal_avg', 0) + team2_rp.get('goal_avg', 0)) / 200
+                pattern_prob = (team1_rp.get('pattern_avg', 0) + team2_rp.get('pattern_avg', 0)) / 200
+                
+                # Expected RP = probability * 1 RP point
+                movement_rp = 1 if movement_prob > 0.5 else 0
+                goal_rp = 1 if goal_prob > 0.5 else 0
+                pattern_rp = 1 if pattern_prob > 0.5 else 0
+                
+                total_rp = movement_rp + goal_rp + pattern_rp
+                
+                return {
+                    'movement': movement_rp,
+                    'goal': goal_rp,
+                    'pattern': pattern_rp,
+                    'total': total_rp
+                }
+            
+            red_rps = calculate_alliance_rps(red_teams)
+            blue_rps = calculate_alliance_rps(blue_teams)
+            
+            # Add win RP (2 points for win, 0 for loss, 1 for tie)
+            if predicted_winner == 'red':
+                red_rps['total'] += 2
+                red_rps['win'] = 1
+                blue_rps['win'] = 0
+            elif predicted_winner == 'blue':
+                blue_rps['total'] += 2
+                red_rps['win'] = 0
+                blue_rps['win'] = 1
+            else:  # tie
+                red_rps['total'] += 1
+                blue_rps['total'] += 1
+                red_rps['win'] = 0.5
+                blue_rps['win'] = 0.5
+            
+            # Update team stats
+            for i, team in enumerate(red_teams):
+                if team in teams:
+                    teams[team]['total_predicted_rp'] += red_rps['total']
+                    teams[team]['total_predicted_wins'] += red_rps['win']
+                    teams[team]['total_predicted_matches'] += 1
+                    teams[team]['predicted_scores'].append(red_rps['total'])
+            
+            for i, team in enumerate(blue_teams):
+                if team in teams:
+                    teams[team]['total_predicted_rp'] += blue_rps['total']
+                    teams[team]['total_predicted_wins'] += blue_rps['win']
+                    teams[team]['total_predicted_matches'] += 1
+                    teams[team]['predicted_scores'].append(blue_rps['total'])
+        
+        # Calculate averages
+        leaderboard = []
+        for team_num, team_data in teams.items():
+            if team_data['total_predicted_matches'] > 0:
+                avg_rp = team_data['total_predicted_rp'] / team_data['total_predicted_matches']
+                win_rate = (team_data['total_predicted_wins'] / team_data['total_predicted_matches']) * 100
+                
+                # Sort predicted scores to find median
+                sorted_scores = sorted(team_data['predicted_scores'])
+                median_rp = sorted_scores[len(sorted_scores) // 2] if sorted_scores else 0
+                
+                leaderboard.append({
+                    'team_number': team_num,
+                    'avg_predicted_rp': round(avg_rp, 2),
+                    'total_predicted_rp': team_data['total_predicted_rp'],
+                    'predicted_matches': team_data['total_predicted_matches'],
+                    'win_rate': round(win_rate, 1),
+                    'median_rp': median_rp,
+                    'highest_opr_info': team_data.get('highest_opr_info', {})
+                })
+        
+        # Sort by average predicted RP (descending)
+        leaderboard.sort(key=lambda x: x['avg_predicted_rp'], reverse=True)
+        
+        return leaderboard
+
 calculator = FTCStatsCalculator()
 
 # Serve frontend
@@ -131,17 +296,25 @@ def serve_static(path):
 def get_event_predictions(event_code: str):
     """Get match predictions AND past match results for an event"""
     try:
+        # Get OPR source from query parameter (default to current event)
+        use_highest_season_opr = request.args.get('opr_source', 'current') == 'highest'
+        
         matches = calculator.get_event_matches(event_code)
         if not matches:
             return jsonify({"error": f"No matches found for event {event_code}"}), 404
         
         print(f"Found {len(matches)} matches for event {event_code}")
+        print(f"Using OPR source: {'Highest Season OPR' if use_highest_season_opr else 'Current Event OPR'}")
         
         # Get OPR data
-        opr_data = calculator.calculate_opr(event_code)
+        opr_result = calculator.calculate_opr(event_code, use_highest_season_opr)
+        opr_data = opr_result['opr_values']
         
         # Get RP data
         rp_data = calculator.calculate_rp_simple(event_code)
+        
+        # Calculate leaderboard
+        leaderboard = calculator.calculate_leaderboard(event_code, opr_result, rp_data, matches, use_highest_season_opr)
         
         predictions = []
         past_matches = []
@@ -235,8 +408,11 @@ def get_event_predictions(event_code: str):
         return jsonify({
             "event_code": event_code,
             "opr_data": opr_data,
+            "opr_source": "highest_season" if use_highest_season_opr else "current_event",
+            "highest_opr_info": opr_result.get('highest_opr_info', {}),
             "predictions": predictions,
             "past_matches": past_matches,
+            "leaderboard": leaderboard,
             "scheduled_matches": scheduled_matches,
             "played_matches": played_matches,
             "total_matches": len(matches),
