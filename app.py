@@ -79,6 +79,16 @@ class FTCStatsCalculator:
         
         teams = set()
         for match in matches:
+            # Skip non-qual matches (match numbers > 10000)
+            match_id = match.get('id', 0)
+            if isinstance(match_id, str):
+                try:
+                    match_num = int(match_id)
+                    if match_num > 10000:
+                        continue
+                except:
+                    pass
+            
             for team_data in match.get('teams', []):
                 team_num = str(team_data.get('teamNumber'))
                 if team_num:
@@ -123,6 +133,16 @@ class FTCStatsCalculator:
         
         teams = set()
         for match in matches:
+            # Skip non-qual matches (match numbers > 10000)
+            match_id = match.get('id', 0)
+            if isinstance(match_id, str):
+                try:
+                    match_num = int(match_id)
+                    if match_num > 10000:
+                        continue
+                except:
+                    pass
+            
             for team_data in match.get('teams', []):
                 team_num = str(team_data.get('teamNumber'))
                 if team_num:
@@ -144,7 +164,10 @@ class FTCStatsCalculator:
                     'goal_rp': goal_avg > 50,
                     'goal_avg': round(goal_avg),
                     'pattern_rp': pattern_avg > 50,
-                    'pattern_avg': round(pattern_avg)
+                    'pattern_avg': round(pattern_avg),
+                    'movement_prob': round(movement_avg),
+                    'goal_prob': round(goal_avg),
+                    'pattern_prob': round(pattern_avg)
                 }
             else:
                 rp_data[team] = {
@@ -153,13 +176,16 @@ class FTCStatsCalculator:
                     'goal_rp': False, 
                     'goal_avg': 0,
                     'pattern_rp': False,
-                    'pattern_avg': 0
+                    'pattern_avg': 0,
+                    'movement_prob': 0,
+                    'goal_prob': 0,
+                    'pattern_prob': 0
                 }
         
         return rp_data
 
     def calculate_leaderboard(self, event_code: str, opr_data: dict, rp_data: dict, matches: list):
-        """Calculate leaderboard based on event status"""
+        """Calculate leaderboard based on event status - ONLY QUAL MATCHES"""
         teams = {}
         
         # Initialize team data structure
@@ -173,8 +199,20 @@ class FTCStatsCalculator:
                 'is_predicted': False  # Track if this is actual or predicted
             }
         
-        # Process all matches
+        # Process all matches (but skip non-qual matches)
         for match in matches:
+            match_id = match.get('id', 0)
+            
+            # Skip non-qual matches (match numbers > 10000)
+            if isinstance(match_id, str):
+                try:
+                    match_num = int(match_id)
+                    if match_num > 10000:
+                        continue
+                except:
+                    # If can't parse as int, assume it's a qual match
+                    pass
+            
             red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
             blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
             
@@ -189,29 +227,29 @@ class FTCStatsCalculator:
                 blue_score = match['scores']['blue'].get('totalPoints', 0)
                 actual_winner = 'red' if red_score > blue_score else 'blue' if blue_score > red_score else 'tie'
                 
-                # Calculate actual RPs from scores
+                # Calculate actual RPs from scores (FTC 2025 rules)
                 red_rp_total = 0
                 blue_rp_total = 0
                 
-                # Movement RP (from scores)
+                # Movement RP (from scores) - +1 RP
                 red_movement = match['scores']['red'].get('movementBonus', False)
                 blue_movement = match['scores']['blue'].get('movementBonus', False)
                 if red_movement: red_rp_total += 1
                 if blue_movement: blue_rp_total += 1
                 
-                # Goal RP (from scores)
+                # Goal RP (from scores) - +1 RP
                 red_goal = match['scores']['red'].get('goalBonus', False)
                 blue_goal = match['scores']['blue'].get('goalBonus', False)
                 if red_goal: red_rp_total += 1
                 if blue_goal: blue_rp_total += 1
                 
-                # Pattern RP (from scores)
+                # Pattern RP (from scores) - +1 RP
                 red_pattern = match['scores']['red'].get('patternBonus', False)
                 blue_pattern = match['scores']['blue'].get('patternBonus', False)
                 if red_pattern: red_rp_total += 1
                 if blue_pattern: blue_rp_total += 1
                 
-                # Win RP
+                # Win/Tie RP (FTC 2025: +2 for win, +1 for tie)
                 if actual_winner == 'red':
                     red_rp_total += 2
                     red_win = 1
@@ -249,7 +287,7 @@ class FTCStatsCalculator:
                 # Predict winner
                 predicted_winner = 'red' if red_opr > blue_opr else 'blue' if blue_opr < red_opr else 'tie'
                 
-                # Calculate predicted RPs for each alliance
+                # Calculate predicted RPs for each alliance using team RP probabilities
                 def calculate_alliance_rps(teams_list):
                     if len(teams_list) != 2:
                         return {'movement': 0, 'goal': 0, 'pattern': 0, 'total': 0}
@@ -257,14 +295,14 @@ class FTCStatsCalculator:
                     team1_rp = rp_data.get(teams_list[0], {})
                     team2_rp = rp_data.get(teams_list[1], {})
                     
-                    movement_avg = (team1_rp.get('movement_avg', 0) + team2_rp.get('movement_avg', 0)) / 2
-                    goal_avg = (team1_rp.get('goal_avg', 0) + team2_rp.get('goal_avg', 0)) / 2
-                    pattern_avg = (team1_rp.get('pattern_avg', 0) + team2_rp.get('pattern_avg', 0)) / 2
+                    movement_prob = (team1_rp.get('movement_prob', 0) + team2_rp.get('movement_prob', 0)) / 200  # Convert percentage to probability
+                    goal_prob = (team1_rp.get('goal_prob', 0) + team2_rp.get('goal_prob', 0)) / 200
+                    pattern_prob = (team1_rp.get('pattern_prob', 0) + team2_rp.get('pattern_prob', 0)) / 200
                     
-                    # Expected RP = probability * 1 RP point (threshold at 50%)
-                    movement_rp = 1 if movement_avg > 50 else 0
-                    goal_rp = 1 if goal_avg > 50 else 0
-                    pattern_rp = 1 if pattern_avg > 50 else 0
+                    # Each bonus RP is worth +1 point if probability > 50%
+                    movement_rp = 1 if movement_prob > 0.5 else 0
+                    goal_rp = 1 if goal_prob > 0.5 else 0
+                    pattern_rp = 1 if pattern_prob > 0.5 else 0
                     
                     total_rp = movement_rp + goal_rp + pattern_rp
                     
@@ -272,13 +310,16 @@ class FTCStatsCalculator:
                         'movement': movement_rp,
                         'goal': goal_rp,
                         'pattern': pattern_rp,
-                        'total': total_rp
+                        'total': total_rp,
+                        'movement_prob': round(movement_prob * 100),
+                        'goal_prob': round(goal_prob * 100),
+                        'pattern_prob': round(pattern_prob * 100)
                     }
                 
                 red_rps = calculate_alliance_rps(red_teams)
                 blue_rps = calculate_alliance_rps(blue_teams)
                 
-                # Add win RP (2 points for win, 0 for loss, 1 for tie)
+                # Add win/tie RP (FTC 2025: +2 for win, +1 for tie)
                 if predicted_winner == 'red':
                     red_rps['total'] += 2
                     red_rps['win'] = 1
@@ -397,6 +438,18 @@ def get_event_predictions(event_code: str):
         played_matches = 0
         
         for match in matches:
+            match_id = match.get('id', 0)
+            
+            # Skip non-qual matches for display too (match numbers > 10000)
+            if isinstance(match_id, str):
+                try:
+                    match_num = int(match_id)
+                    if match_num > 10000:
+                        continue
+                except:
+                    # If can't parse as int, assume it's a qual match
+                    pass
+            
             red_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Red']
             blue_teams = [str(t['teamNumber']) for t in match.get('teams', []) if t.get('alliance') == 'Blue']
             
@@ -412,6 +465,37 @@ def get_event_predictions(event_code: str):
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
                 predicted_winner = 'red' if red_opr > blue_opr else 'blue'
                 
+                # Calculate actual RP for display
+                red_rp_total = 0
+                blue_rp_total = 0
+                
+                # Movement RP
+                red_movement = match['scores']['red'].get('movementBonus', False)
+                blue_movement = match['scores']['blue'].get('movementBonus', False)
+                if red_movement: red_rp_total += 1
+                if blue_movement: blue_rp_total += 1
+                
+                # Goal RP
+                red_goal = match['scores']['red'].get('goalBonus', False)
+                blue_goal = match['scores']['blue'].get('goalBonus', False)
+                if red_goal: red_rp_total += 1
+                if blue_goal: blue_rp_total += 1
+                
+                # Pattern RP
+                red_pattern = match['scores']['red'].get('patternBonus', False)
+                blue_pattern = match['scores']['blue'].get('patternBonus', False)
+                if red_pattern: red_rp_total += 1
+                if blue_pattern: blue_rp_total += 1
+                
+                # Win/Tie RP
+                if actual_winner == 'red':
+                    red_rp_total += 2
+                elif actual_winner == 'blue':
+                    blue_rp_total += 2
+                else:  # tie
+                    red_rp_total += 1
+                    blue_rp_total += 1
+                
                 past_matches.append({
                     'match_number': match.get('id'),
                     'red_teams': red_teams,
@@ -422,10 +506,18 @@ def get_event_predictions(event_code: str):
                     'predicted_winner': predicted_winner,
                     'red_opr_sum': round(red_opr, 1),
                     'blue_opr_sum': round(blue_opr, 1),
-                    'correct_prediction': actual_winner != 'tie' and actual_winner == predicted_winner
+                    'correct_prediction': actual_winner != 'tie' and actual_winner == predicted_winner,
+                    'red_rp': red_rp_total,
+                    'blue_rp': blue_rp_total,
+                    'red_movement_rp': red_movement,
+                    'blue_movement_rp': blue_movement,
+                    'red_goal_rp': red_goal,
+                    'blue_goal_rp': blue_goal,
+                    'red_pattern_rp': red_pattern,
+                    'blue_pattern_rp': blue_pattern
                 })
             else:
-                # This is an upcoming match - make prediction
+                # This is an upcoming match - make prediction WITH RP
                 scheduled_matches += 1
                 red_opr = sum(opr_data.get(team, 0) for team in red_teams)
                 blue_opr = sum(opr_data.get(team, 0) for team in blue_teams)
@@ -438,7 +530,17 @@ def get_event_predictions(event_code: str):
                 
                 def predict_alliance_rps(teams):
                     if len(teams) != 2:
-                        return {'movement_rp': False, 'goal_rp': False, 'pattern_rp': False}
+                        return {
+                            'movement_rp': False, 
+                            'goal_rp': False, 
+                            'pattern_rp': False,
+                            'movement_avg': 0,
+                            'goal_avg': 0,
+                            'pattern_avg': 0,
+                            'movement_prob': 0,
+                            'goal_prob': 0,
+                            'pattern_prob': 0
+                        }
                     
                     team1_rp = rp_data.get(teams[0], {})
                     team2_rp = rp_data.get(teams[1], {})
@@ -447,20 +549,49 @@ def get_event_predictions(event_code: str):
                     goal_avg = (team1_rp.get('goal_avg', 0) + team2_rp.get('goal_avg', 0)) / 2
                     pattern_avg = (team1_rp.get('pattern_avg', 0) + team2_rp.get('pattern_avg', 0)) / 2
                     
+                    # Calculate probabilities (convert percentage to decimal)
+                    movement_prob = movement_avg / 100
+                    goal_prob = goal_avg / 100
+                    pattern_prob = pattern_avg / 100
+                    
                     return {
                         'movement_rp': movement_avg > 50,
                         'movement_avg': round(movement_avg),
                         'goal_rp': goal_avg > 50,
                         'goal_avg': round(goal_avg),
                         'pattern_rp': pattern_avg > 50,
-                        'pattern_avg': round(pattern_avg)
+                        'pattern_avg': round(pattern_avg),
+                        'movement_prob': round(movement_prob * 100),
+                        'goal_prob': round(goal_prob * 100),
+                        'pattern_prob': round(pattern_prob * 100)
                     }
                 
                 red_rps = predict_alliance_rps(red_teams)
                 blue_rps = predict_alliance_rps(blue_teams)
                 
+                # Calculate total predicted RP for each alliance
+                red_total_rp = 0
+                blue_total_rp = 0
+                
+                if red_rps['movement_rp']: red_total_rp += 1
+                if red_rps['goal_rp']: red_total_rp += 1
+                if red_rps['pattern_rp']: red_total_rp += 1
+                
+                if blue_rps['movement_rp']: blue_total_rp += 1
+                if blue_rps['goal_rp']: blue_total_rp += 1
+                if blue_rps['pattern_rp']: blue_total_rp += 1
+                
                 predicted_winner = 'red' if red_opr > blue_opr else 'blue'
                 winner_confidence = min(100, max(50, round(confidence + 50)))
+                
+                # Add win/tie RP to totals
+                if predicted_winner == 'red':
+                    red_total_rp += 2
+                elif predicted_winner == 'blue':
+                    blue_total_rp += 2
+                else:  # tie
+                    red_total_rp += 1
+                    blue_total_rp += 1
                 
                 predictions.append({
                     'match_number': match.get('id'),
@@ -472,7 +603,9 @@ def get_event_predictions(event_code: str):
                     'confidence_percentage': round(confidence, 1),
                     'winner_confidence': winner_confidence,
                     'red_rp_predictions': red_rps,
-                    'blue_rp_predictions': blue_rps
+                    'blue_rp_predictions': blue_rps,
+                    'red_total_rp': red_total_rp,
+                    'blue_total_rp': blue_total_rp
                 })
         
         # Calculate prediction accuracy for past matches
